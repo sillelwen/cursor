@@ -56,7 +56,16 @@ export default function EditorPage() {
     form.append('name', file.name);
     setUploading(true);
     try {
-      await fetch('/api/upload', { method: 'POST', body: form, headers: { 'x-user-id': localStorage.getItem('userId') || '' } });
+      const response = await fetch('/api/upload', { 
+        method: 'POST', 
+        body: form, 
+        headers: { 'x-user-id': localStorage.getItem('userId') || 'demo-user' } 
+      });
+      if (!response.ok) {
+        console.error('Upload failed:', await response.text());
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
     } finally {
       setUploading(false);
     }
@@ -204,7 +213,7 @@ function UploadToLibrary({ onUpload, uploading }: { onUpload: (file: File) => Pr
           if (!file) return;
           setBusy(true);
           try { await onUpload(file); } finally { setBusy(false); }
-          e.currentTarget.value = '';
+          if (e.currentTarget) e.currentTarget.value = '';
         }}
       />
       <span>{busy || uploading ? 'Uploading...' : 'Upload to library'}</span>

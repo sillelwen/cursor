@@ -13,7 +13,7 @@ export function AssetBrowser({ onPick }: { onPick: (asset: Asset) => void }) {
     const fetchAssets = async () => {
       setLoading(true);
       try {
-        const res = await fetch('/api/assets', { headers: { 'x-user-id': localStorage.getItem('userId') || '' } });
+        const res = await fetch('/api/assets', { headers: { 'x-user-id': localStorage.getItem('userId') || 'demo-user' } });
         if (res.ok) {
           const data = await res.json();
           setAssets(data.assets);
