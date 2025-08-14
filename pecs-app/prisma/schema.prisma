@@ -80,6 +80,9 @@ model Card {
   assetId  String?
   crop     String? // JSON string
   order    Int
+  fontFamily String?
+  fontSizePt Int?
+  bold       Boolean?
 
   sheet Sheet  @relation(fields: [sheetId], references: [id], onDelete: Cascade)
   asset Asset? @relation(fields: [assetId], references: [id])
@@ -91,6 +94,7 @@ model Asset {
   id        String   @id @default(cuid())
   userId    String
   name      String
+  category  String?
   url       String
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

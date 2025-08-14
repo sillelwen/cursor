@@ -7,9 +7,10 @@ const authOptions: NextAuthOptions = {
       id: 'demo',
       name: 'Demo User',
       type: 'credentials',
-      credentials: {},
+      credentials: {
+        username: { label: 'Username', type: 'text' },
+      },
       async authorize() {
-        // Return a demo user for now
         return {
           id: 'demo-user',
           name: 'Demo User',

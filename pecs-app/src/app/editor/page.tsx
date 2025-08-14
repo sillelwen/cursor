@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, CardData, SheetSettings } from '@/components/editor/Canvas';
 import { NumberField, SelectField, TextField, ToggleField, ActionRow, Button } from '@/components/editor/Controls';
 import { AssetBrowser } from '@/components/editor/AssetBrowser';
@@ -33,12 +33,32 @@ export default function EditorPage() {
   const [cards, setCards] = useState<CardData[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [title, setTitle] = useState<string>('Untitled');
+  const [sheetId, setSheetId] = useState<string | null>(null);
+  const [sheets, setSheets] = useState<Array<{ id: string; title: string; updatedAt: string }>>([]);
+  const [loadingSheets, setLoadingSheets] = useState(false);
 
   const totalCells = useMemo(() => settings.columns * settings.rows, [settings]);
 
   const addCardFromFile = async (file: File) => {
-    const objectUrl = URL.createObjectURL(file);
-    setCards((prev) => [...prev, { id: uuidv4(), label: file.name.replace(/\.[^.]+$/, ''), objectUrl }]);
+    const form = new FormData();
+    form.append('file', file);
+    form.append('name', file.name);
+    const headers: Record<string, string> = { 'x-user-id': localStorage.getItem('userId') || 'demo-user' };
+    if (sheetId) headers['x-sheet-id'] = sheetId;
+    const res = await fetch('/api/upload', { method: 'POST', body: form, headers });
+    if (res.ok) {
+      const data = await res.json();
+      const asset = data.asset as { id: string; url: string };
+      setCards((prev) => [
+        ...prev,
+        { id: uuidv4(), label: file.name.replace(/\.[^.]+$/, ''), imageUrl: asset.url, assetId: asset.id },
+      ]);
+    } else {
+      // Fallback: still show locally if upload failed
+      const objectUrl = URL.createObjectURL(file);
+      setCards((prev) => [...prev, { id: uuidv4(), label: file.name.replace(/\.[^.]+$/, ''), objectUrl }]);
+    }
   };
 
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,6 +106,10 @@ export default function EditorPage() {
     setCards((prev) => prev.map((c) => (c.id === id ? { ...c, label } : c)));
   };
 
+  const updateCardFont = (id: string, overrides: Partial<Pick<CardData, 'fontFamily' | 'fontSizePt' | 'bold'>>) => {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, ...overrides } : c)));
+  };
+
   const removeCard = (id: string) => setCards((prev) => prev.filter((c) => c.id !== id));
 
   const exportPdf = async () => {
@@ -105,11 +129,128 @@ export default function EditorPage() {
     setSettings((s) => ({ ...s, pageWidthMm: size.w, pageHeightMm: size.h }));
   };
 
+  // Sheets CRUD
+  const fetchSheets = async () => {
+    setLoadingSheets(true);
+    try {
+      const res = await fetch('/api/sheets', { headers: { 'x-user-id': localStorage.getItem('userId') || 'demo-user' } });
+      if (res.ok) {
+        const data = await res.json();
+        setSheets(data.sheets || []);
+      }
+    } finally {
+      setLoadingSheets(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSheets();
+  }, []);
+
+  const buildPayload = () => ({
+    title,
+    settings,
+    cards: cards.map((c, index) => ({
+      label: c.label,
+      imageUrl: c.imageUrl ?? null,
+      assetId: c.assetId ?? null,
+      crop: c.crop ?? null,
+      order: index,
+    })),
+  });
+
+  const saveNewSheet = async () => {
+    const res = await fetch('/api/sheets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': localStorage.getItem('userId') || 'demo-user' },
+      body: JSON.stringify(buildPayload()),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const newId = data.sheet.id as string;
+      setSheetId(newId);
+      // Assign uploaded assets to this sheet for scoping
+      await Promise.all(
+        cards
+          .map((c) => c.assetId)
+          .filter((id): id is string => Boolean(id))
+          .map((id) =>
+            fetch(`/api/assets/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', 'x-user-id': localStorage.getItem('userId') || 'demo-user' },
+              body: JSON.stringify({ category: `sheet:${newId}` }),
+            })
+          )
+      );
+      await fetchSheets();
+      alert('Sheet saved');
+    } else {
+      alert('Failed to save sheet');
+    }
+  };
+
+  const updateCurrentSheet = async () => {
+    if (!sheetId) return saveNewSheet();
+    const res = await fetch(`/api/sheets/${sheetId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': localStorage.getItem('userId') || 'demo-user' },
+      body: JSON.stringify(buildPayload()),
+    });
+    if (res.ok) {
+      await fetchSheets();
+      alert('Sheet updated');
+    } else {
+      alert('Failed to update sheet');
+    }
+  };
+
+  const loadSheet = async (id: string) => {
+    const res = await fetch(`/api/sheets/${id}` , { headers: { 'x-user-id': localStorage.getItem('userId') || 'demo-user' } });
+    if (res.ok) {
+      const data = await res.json();
+      const sheet = data.sheet;
+      setSheetId(sheet.id);
+      setTitle(sheet.title || 'Untitled');
+      try {
+        const parsed = typeof sheet.settings === 'string' ? JSON.parse(sheet.settings) : sheet.settings;
+        setSettings(parsed);
+      } catch {
+        // ignore parse errors
+      }
+      const mapped: CardData[] = (sheet.cards || []).map((c: any) => ({
+        id: c.id,
+        label: c.label,
+        imageUrl: c.imageUrl || undefined,
+        objectUrl: undefined,
+        assetId: c.assetId || undefined,
+        crop: c.crop ? (typeof c.crop === 'string' ? JSON.parse(c.crop) : c.crop) : undefined,
+      }));
+      setCards(mapped);
+    }
+  };
+
+  const deleteSheet = async (id: string) => {
+    const res = await fetch(`/api/sheets/${id}`, { method: 'DELETE', headers: { 'x-user-id': localStorage.getItem('userId') || 'demo-user' } });
+    if (res.ok) {
+      await fetchSheets();
+      if (sheetId === id) {
+        setSheetId(null);
+        setTitle('Untitled');
+        setSettings(defaultSettings());
+        setCards([]);
+      }
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px,1fr]">
       <aside className="space-y-4 rounded-lg bg-gray-900 p-4">
         <h2 className="text-lg font-semibold">Settings</h2>
         <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-3 items-center">
+            <label className="col-span-1 text-sm text-gray-300">Title</label>
+            <input className="col-span-2 rounded bg-gray-800 px-2 py-2 text-gray-100" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
           <SelectField
             label="Paper format"
             value={`${settings.pageWidthMm}x${settings.pageHeightMm}`}
@@ -158,6 +299,30 @@ export default function EditorPage() {
           <Button onClick={exportPdf}>Download PDF</Button>
           <Button variant="secondary" onClick={() => window.print()}>Print</Button>
         </ActionRow>
+
+        <h2 className="mt-6 text-lg font-semibold">Save</h2>
+        <ActionRow>
+          <Button onClick={updateCurrentSheet}>{sheetId ? 'Save changes' : 'Save sheet'}</Button>
+          <Button variant="secondary" onClick={saveNewSheet}>Save as new</Button>
+        </ActionRow>
+
+        <h2 className="mt-6 text-lg font-semibold">Saved sheets</h2>
+        {loadingSheets ? (
+          <div className="text-sm text-gray-400">Loading...</div>
+        ) : (
+          <div className="space-y-2">
+            {!sheets.length && <div className="text-sm text-gray-400">No saved sheets</div>}
+            {sheets.map((s) => (
+              <div key={s.id} className="flex items-center justify-between rounded bg-gray-800 px-2 py-1 text-sm">
+                <button className="truncate text-left" onClick={() => loadSheet(s.id)} title={s.title}>{s.title}</button>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" onClick={() => loadSheet(s.id)}>Load</Button>
+                  <Button variant="secondary" onClick={() => deleteSheet(s.id)}>Delete</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </aside>
 
       <section className="space-y-4">
@@ -186,7 +351,30 @@ export default function EditorPage() {
                   onChange={(e) => updateCardLabel(c.id, e.target.value)}
                 />
               </div>
-              <Button variant="secondary" onClick={() => removeCard(c.id)}>Remove</Button>
+              <div className="flex items-center gap-2">
+                <input
+                  className="w-28 rounded bg-gray-800 px-2 py-1 text-xs"
+                  placeholder="Font family"
+                  value={c.fontFamily ?? ''}
+                  onChange={(e) => updateCardFont(c.id, { fontFamily: e.target.value || undefined })}
+                />
+                <input
+                  type="number"
+                  className="w-20 rounded bg-gray-800 px-2 py-1 text-xs"
+                  placeholder="Size"
+                  value={c.fontSizePt ?? ''}
+                  onChange={(e) => updateCardFont(c.id, { fontSizePt: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <label className="flex items-center gap-1 text-xs text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={!!c.bold}
+                    onChange={(e) => updateCardFont(c.id, { bold: e.target.checked })}
+                  />
+                  Bold
+                </label>
+                <Button variant="secondary" onClick={() => removeCard(c.id)}>Remove</Button>
+              </div>
             </div>
           ))}
         </div>

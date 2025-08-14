@@ -5,9 +5,23 @@ import path from 'path';
 
 export const runtime = 'nodejs';
 
+async function ensureUser(userId: string) {
+  await prisma.user.upsert({
+    where: { id: userId },
+    update: {},
+    create: {
+      id: userId,
+      name: 'Demo User',
+      email: `${userId}@example.local`,
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const userId = req.headers.get('x-user-id') || 'demo-user';
+    await ensureUser(userId);
+    const sheetId = req.headers.get('x-sheet-id');
 
     const form = await req.formData();
     const file = form.get('file');
@@ -22,7 +36,7 @@ export async function POST(req: NextRequest) {
     await fs.writeFile(path.join(dir, fileName), bytes);
     const url = `/uploads/${fileName}`;
 
-    const asset = await prisma.asset.create({ data: { userId, name, url } });
+    const asset = await prisma.asset.create({ data: { userId, name, url, category: sheetId ? `sheet:${sheetId}` : null } });
     return NextResponse.json({ asset }, { status: 201 });
   } catch (error) {
     console.error('Upload API error:', error);

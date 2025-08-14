@@ -15,8 +15,7 @@ export function AuthButtons() {
   }
   return (
     <div className="flex items-center gap-2">
-      <Button onClick={() => signIn('google')}>Sign in with Google</Button>
-      <Button variant="secondary" onClick={() => signIn()}>Sign in</Button>
+      <Button onClick={() => signIn('demo')}>Sign in (Demo)</Button>
     </div>
   );
 }

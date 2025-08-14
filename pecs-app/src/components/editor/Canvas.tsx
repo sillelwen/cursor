@@ -11,6 +11,10 @@ export type CardData = {
   imageUrl?: string;
   objectUrl?: string;
   crop?: { x: number; y: number; scale: number };
+  assetId?: string;
+  fontFamily?: string;
+  fontSizePt?: number;
+  bold?: boolean;
 };
 
 export type SheetSettings = {
@@ -97,8 +101,8 @@ export function Canvas({
           <div key={card.id} className="border border-gray-300 p-1 flex flex-col">
             {textPosition === 'above' && (
               <div
-                className={`text-center ${textClass}`}
-                style={{ fontFamily, fontSize: `${fontSizePt}pt` }}
+                className={`text-center ${card.bold ?? bold ? 'font-bold' : ''}`}
+                style={{ fontFamily: card.fontFamily ?? fontFamily, fontSize: `${card.fontSizePt ?? fontSizePt}pt` }}
               >
                 {card.label}
               </div>
@@ -120,8 +124,8 @@ export function Canvas({
             </div>
             {textPosition === 'below' && (
               <div
-                className={`text-center ${textClass}`}
-                style={{ fontFamily, fontSize: `${fontSizePt}pt` }}
+                className={`text-center ${card.bold ?? bold ? 'font-bold' : ''}`}
+                style={{ fontFamily: card.fontFamily ?? fontFamily, fontSize: `${card.fontSizePt ?? fontSizePt}pt` }}
               >
                 {card.label}
               </div>
