@@ -2,26 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { requireUserId } from '@/lib/auth';
 
 export const runtime = 'nodejs';
-
-async function ensureUser(userId: string) {
-  await prisma.user.upsert({
-    where: { id: userId },
-    update: {},
-    create: {
-      id: userId,
-      name: 'Demo User',
-      email: `${userId}@example.local`,
-    },
-  });
-}
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = req.headers.get('x-user-id') || 'demo-user';
-    await ensureUser(userId);
-    const sheetId = req.headers.get('x-sheet-id');
+    const userId = requireUserId(req);
 
     const form = await req.formData();
     const file = form.get('file');
@@ -36,10 +24,11 @@ export async function POST(req: NextRequest) {
     await fs.writeFile(path.join(dir, fileName), bytes);
     const url = `/uploads/${fileName}`;
 
-    const asset = await prisma.asset.create({ data: { userId, name, url, category: sheetId ? `sheet:${sheetId}` : null } });
+    const asset = await prisma.asset.create({ data: { userId, name, url } });
     return NextResponse.json({ asset }, { status: 201 });
   } catch (error) {
     console.error('Upload API error:', error);
-    return NextResponse.json({ error: 'Upload failed: ' + error }, { status: 500 });
+    const status = String(error).includes('Unauthorized') ? 401 : 500;
+    return NextResponse.json({ error: 'Upload failed: ' + error }, { status });
   }
 }

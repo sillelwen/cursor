@@ -15,6 +15,7 @@ model User {
   image         String?
   phone         String?  @unique
   passwordHash  String?
+  defaultSheetSettings String?
 
   accounts Account[]
   sessions Session[]
@@ -80,6 +81,8 @@ model Card {
   assetId  String?
   crop     String? // JSON string
   order    Int
+
+  // Optional per-card typography overrides
   fontFamily String?
   fontSizePt Int?
   bold       Boolean?
@@ -94,7 +97,6 @@ model Asset {
   id        String   @id @default(cuid())
   userId    String
   name      String
-  category  String?
   url       String
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

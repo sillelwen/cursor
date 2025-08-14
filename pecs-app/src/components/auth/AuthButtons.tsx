@@ -15,7 +15,8 @@ export function AuthButtons() {
   }
   return (
     <div className="flex items-center gap-2">
-      <Button onClick={() => signIn('demo')}>Sign in (Demo)</Button>
+      <Button onClick={() => signIn()}>Sign In</Button>
+      <Button variant="secondary" onClick={() => window.location.href = '/auth/signup'}>Sign Up</Button>
     </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from 'next/image';
 import { useMemo } from 'react';
 
 export type TextPosition = 'above' | 'below';
@@ -10,11 +9,12 @@ export type CardData = {
   label: string;
   imageUrl?: string;
   objectUrl?: string;
-  crop?: { x: number; y: number; scale: number };
   assetId?: string;
+  crop?: { x: number; y: number; scale: number };
   fontFamily?: string;
   fontSizePt?: number;
   bold?: boolean;
+  uploadingAsset?: boolean;
 };
 
 export type SheetSettings = {
@@ -22,7 +22,10 @@ export type SheetSettings = {
   rows: number;
   pageWidthMm: number;
   pageHeightMm: number;
-  marginMm: number;
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
   gapMm: number;
   cardWidthMm: number;
   cardHeightMm: number;
@@ -48,7 +51,10 @@ export function Canvas({
     rows,
     pageWidthMm,
     pageHeightMm,
-    marginMm,
+    marginTopMm,
+    marginRightMm,
+    marginBottomMm,
+    marginLeftMm,
     gapMm,
     cardWidthMm,
     cardHeightMm,
@@ -61,10 +67,10 @@ export function Canvas({
   const pageStyle = useMemo(() => ({
     width: mmToPx(pageWidthMm),
     height: mmToPx(pageHeightMm),
-    padding: mmToPx(marginMm),
+    padding: `${mmToPx(marginTopMm)}px ${mmToPx(marginRightMm)}px ${mmToPx(marginBottomMm)}px ${mmToPx(marginLeftMm)}px`,
     background: 'white',
     color: 'black',
-  }), [pageWidthMm, pageHeightMm, marginMm]);
+  }), [pageWidthMm, pageHeightMm, marginTopMm, marginRightMm, marginBottomMm, marginLeftMm]);
 
   const cardStylePx = useMemo(() => ({
     width: mmToPx(cardWidthMm),
@@ -72,7 +78,7 @@ export function Canvas({
     gap: mmToPx(gapMm),
   }), [cardWidthMm, cardHeightMm, gapMm]);
 
-  const textClass = `${bold ? 'font-bold' : ''}`;
+  const textClassBase = `${bold ? 'font-bold' : ''}`;
 
   const totalCells = columns * rows;
   const displayCards = useMemo(() => {
@@ -102,20 +108,30 @@ export function Canvas({
             {textPosition === 'above' && (
               <div
                 className={`text-center ${card.bold ?? bold ? 'font-bold' : ''}`}
-                style={{ fontFamily: card.fontFamily ?? fontFamily, fontSize: `${card.fontSizePt ?? fontSizePt}pt` }}
+                style={{ fontFamily: card.fontFamily || fontFamily, fontSize: `${card.fontSizePt ?? fontSizePt}pt` }}
               >
                 {card.label}
               </div>
             )}
             <div className="relative flex-1 bg-white overflow-hidden">
               {card.imageUrl || card.objectUrl ? (
-                <Image
-                  src={card.objectUrl || card.imageUrl!}
-                  alt={card.label || 'card image'}
-                  fill
-                  sizes="100%"
-                  className="object-contain"
-                />
+                <>
+                  <div
+                    className="absolute inset-0 screen-img"
+                    style={{
+                      backgroundImage: `url(${card.objectUrl || card.imageUrl!})`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'center',
+                      backgroundSize: 'contain',
+                    }}
+                  />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={card.objectUrl || card.imageUrl!}
+                    alt={card.label || 'card image'}
+                    className="absolute inset-0 h-full w-full object-contain print-img"
+                  />
+                </>
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
                   No image
@@ -125,7 +141,7 @@ export function Canvas({
             {textPosition === 'below' && (
               <div
                 className={`text-center ${card.bold ?? bold ? 'font-bold' : ''}`}
-                style={{ fontFamily: card.fontFamily ?? fontFamily, fontSize: `${card.fontSizePt ?? fontSizePt}pt` }}
+                style={{ fontFamily: card.fontFamily || fontFamily, fontSize: `${card.fontSizePt ?? fontSizePt}pt` }}
               >
                 {card.label}
               </div>

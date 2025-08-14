@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { SessionProvider } from 'next-auth/react';
 import { AuthButtons } from '@/components/auth/AuthButtons';
+import { SessionSync } from '@/components/auth/SessionSync';
 
 export const metadata: Metadata = {
   title: 'PECS Builder',
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <h1 className="text-xl font-semibold">PECS Builder</h1>
               <AuthButtons />
             </header>
+            <SessionSync />
             {children}
           </div>
         </SessionProvider>
