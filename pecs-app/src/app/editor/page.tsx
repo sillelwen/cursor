@@ -61,10 +61,17 @@ export default function EditorPage() {
         body: form, 
         headers: { 'x-user-id': localStorage.getItem('userId') || 'demo-user' } 
       });
-      if (!response.ok) {
-        console.error('Upload failed:', await response.text());
+      if (response.ok) {
+        alert('File uploaded successfully! Check "Your assets" section below.');
+        // Refresh asset browser by triggering a re-render
+        window.location.reload();
+      } else {
+        const error = await response.text();
+        alert('Upload failed: ' + error);
+        console.error('Upload failed:', error);
       }
     } catch (error) {
+      alert('Upload error: ' + error);
       console.error('Upload error:', error);
     } finally {
       setUploading(false);
