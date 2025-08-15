@@ -6,7 +6,7 @@ import { Button } from '@/components/editor/Controls';
 
 type Asset = { id: string; name: string; url: string };
 
-export function AssetBrowser({ onPick, refreshToken }: { onPick: (asset: Asset) => void; refreshToken?: number }) {
+export function AssetBrowser({ onPick, refreshToken, t }: { onPick: (asset: Asset) => void; refreshToken?: number; t: (key: keyof typeof import('@/lib/i18n').translations.en) => string }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +18,7 @@ export function AssetBrowser({ onPick, refreshToken }: { onPick: (asset: Asset) 
       setError(null);
       try {
         if (status === 'unauthenticated') {
-          setError('Please sign in first');
+          setError(t('pleaseSignIn'));
           return;
         }
         if (status !== 'authenticated' || !session?.user?.id) {
@@ -29,10 +29,10 @@ export function AssetBrowser({ onPick, refreshToken }: { onPick: (asset: Asset) 
           const data = await res.json();
           setAssets(data.assets || []);
         } else {
-          setError(`Failed to load assets: ${res.status}`);
+          setError(`${t('failedToLoadAssets')} ${res.status}`);
         }
       } catch (err) {
-        setError(`Error loading assets: ${err}`);
+        setError(`${t('errorLoadingAssets')}: ${err}`);
       } finally {
         setLoading(false);
       }
@@ -40,10 +40,10 @@ export function AssetBrowser({ onPick, refreshToken }: { onPick: (asset: Asset) 
     fetchAssets();
   }, [session?.user?.id, status, refreshToken]);
 
-  if (status === 'loading' || loading) return <div className="text-sm text-gray-400">Loading assets...</div>;
-  if (status === 'unauthenticated') return <div className="text-sm text-red-400">Please sign in first</div>;
+  if (status === 'loading' || loading) return <div className="text-sm text-gray-400">{t('loadingAssets')}</div>;
+  if (status === 'unauthenticated') return <div className="text-sm text-red-400">{t('pleaseSignIn')}</div>;
   if (error) return <div className="text-sm text-red-400">{error}</div>;
-  if (!assets.length) return <div className="text-sm text-gray-400">No assets yet. Upload some images above!</div>;
+  if (!assets.length) return <div className="text-sm text-gray-400">{t('noAssets')}</div>;
 
   return (
     <div className="grid grid-cols-4 gap-2">

@@ -282,6 +282,7 @@ export default function EditorPage() {
           setSheets(Array.isArray(data.sheets) ? data.sheets : []);
           if (data.defaultSettings) {
             setCachedDefaults(data.defaultSettings);
+            setSettings((s) => ({ ...s, ...data.defaultSettings }));
           }
         } else {
           console.error('Failed to load sheets:', res.status, res.statusText);
@@ -297,7 +298,7 @@ export default function EditorPage() {
   async function newSheet() {
     if (isDirty) {
       if (!confirm(t('saveChangesPrompt'))) return;
-      await saveSheet('Untitled');
+      await saveSheet(t, (settings as any).title || t('untitled'));
       await refreshSheets();
     }
     const base = cachedDefaults ? { ...defaultSettings(), ...cachedDefaults } : defaultSettings();
@@ -414,7 +415,7 @@ export default function EditorPage() {
         </div>
 
         <h2 className="mt-6 text-lg font-semibold">{t('yourAssets')}</h2>
-        <AssetBrowser onPick={(a) => addCardFromUrl(a.url, sanitizeLabel(a.name))} refreshToken={assetsRefresh} />
+        <AssetBrowser onPick={(a) => addCardFromUrl(a.url, sanitizeLabel(a.name))} refreshToken={assetsRefresh} t={t} />
         <div className="mt-2">
           <UploadToLibrary onUpload={uploadToLibrary} uploading={uploading} t={t} />
         </div>
@@ -427,8 +428,8 @@ export default function EditorPage() {
 
         <h2 className="mt-6 text-lg font-semibold">{t('saveLoad')}</h2>
         <ActionRow>
-          <Button variant="secondary" onClick={async () => { await saveSheet('Untitled'); await refreshSheets(); }}>{t('saveSheet')}</Button>
-          <Button variant="secondary" onClick={async () => { (window as any).__CURRENT_SHEET_ID__ = undefined; await saveSheet('Untitled'); await refreshSheets(); }}>{t('saveAsNew')}</Button>
+          <Button variant="secondary" onClick={async () => { await saveSheet(t, (settings as any).title || t('untitled')); await refreshSheets(); }}>{t('saveSheet')}</Button>
+          <Button variant="secondary" onClick={async () => { (window as any).__CURRENT_SHEET_ID__ = undefined; await saveSheet(t, (settings as any).title || t('untitled')); await refreshSheets(); }}>{t('saveAsNew')}</Button>
         </ActionRow>
         <ActionRow>
           <Button onClick={newSheet}>{t('newSheet')}</Button>
@@ -448,7 +449,7 @@ export default function EditorPage() {
                 <div className="flex gap-1">
                   <Button variant="secondary" onClick={() => {
                     (window as any).__CURRENT_SHEET_ID__ = s.id;
-                    loadMostRecent();
+                    loadSheet(s.id);
                   }}>{t('load')}</Button>
                   <Button variant="secondary" onClick={async () => {
                     if (confirm(t('deleteSheetConfirm'))) {
@@ -471,7 +472,7 @@ export default function EditorPage() {
           <div className="text-sm text-gray-400">{cards.length} {t('cards')} • {totalCells} {t('cells')}</div>
         </div>
         <div className="overflow-auto rounded bg-gray-200 p-4">
-          <Canvas cards={cards} settings={settings} />
+          <Canvas cards={cards} settings={settings} t={t}/>
         </div>
 
         <h3 className="mt-4 text-base font-semibold">{t('cardsHeader')}</h3>
@@ -537,14 +538,14 @@ export default function EditorPage() {
     </div>
   );
 }
-async function saveSheet(title?: string) {
+async function saveSheet(t: (key: keyof typeof import('@/lib/i18n').translations.en) => string, title?: string) {
   const userId = localStorage.getItem('userId');
-  if (!userId) return alert('Please sign in first');
+  if (!userId) return alert(t('pleaseSignIn'));
   const state = (window as any).PECSEditorState;
   const sheet = {
     title,
-    settings: JSON.stringify(state?.getSettings?.() || {}),
-    cards: JSON.stringify(state?.getCards?.() || []),
+    settings: state?.getSettings?.() || {},
+    cards: state?.getCards?.() || [],
   };
   const currentId = (window as any).__CURRENT_SHEET_ID__;
   const url = currentId ? `/api/sheets/${currentId}` : '/api/sheets';
@@ -572,6 +573,21 @@ async function loadMostRecent() {
   const sheets = Array.isArray(data.sheets) ? data.sheets : [];
   if (sheets.length === 0) return;
   const sheet = sheets[0];
+  const state = (window as any).PECSEditorState;
+  state?.loadFromSheet?.(sheet);
+}
+
+async function loadSheet(id: string) {
+  const userId = localStorage.getItem('userId');
+  if (!userId) return;
+  const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
+  if (!res.ok) return;
+  const data = await res.json();
+  const sheets = Array.isArray(data.sheets) ? data.sheets : [];
+  console.log('sheets', sheets);
+  if (sheets.length === 0) return;
+  const sheet = sheets.find((s: {id: string}) => s.id == id);
+  if(!sheet) return;
   const state = (window as any).PECSEditorState;
   state?.loadFromSheet?.(sheet);
 }

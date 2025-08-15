@@ -78,7 +78,11 @@ export const translations = {
     confirmPassword: 'Confirm password',
     cardsHeader: 'Cards',
     mm: 'mm',
-    noImage: 'No image'
+    noImage: 'No image',
+    loadingAssets: 'Loading assets...',
+    noAssets: 'No assets yet. Upload some images above!',
+    failedToLoadAssets: 'Failed to load assets',
+    errorLoadingAssets: 'Error loading assets'
   },
   he: {
     settings: 'הגדרות',
@@ -157,7 +161,11 @@ export const translations = {
     confirmPassword: 'אימות סיסמה',
     cardsHeader: 'כרטיסים',
     mm: 'מ"מ',
-    noImage: 'אין תמונה'
+    noImage: 'אין תמונה',
+    loadingAssets: 'טעינת נכסים',
+    noAssets: 'אין עדיין נכסים. העלה כמה תמונות למעלה!',
+    failedToLoadAssets: 'נכשל בטעינת נכסים',
+    errorLoadingAssets: 'שגיאת טעינת נכסים'
   },
   ru: {
     settings: 'Настройки',
@@ -236,7 +244,11 @@ export const translations = {
     confirmPassword: 'Подтвердите пароль',
     cardsHeader: 'Карточки',
     mm: 'мм',
-    noImage: 'Нет изображения'
+    noImage: 'Нет изображения',
+    loadingAssets: 'Загрузка ресурсов',
+    noAssets: 'Пока нет ресурсов. Загрузите изображения выше!',
+    failedToLoadAssets: 'Не удалось загрузить ресурсы',
+    errorLoadingAssets: 'Ошибка при загрузке ресурсов'
   },
 } as const;
 
