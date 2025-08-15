@@ -7,6 +7,8 @@ import { AssetBrowser } from '@/components/editor/AssetBrowser';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { v4 as uuidv4 } from 'uuid';
+import { getTranslation } from '@/lib/i18n';
+import { useLocale } from '@/contexts/LocaleContext';
 
 const A4 = { w: 210, h: 297 };
 const Letter = { w: 215.9, h: 279.4 };
@@ -37,7 +39,7 @@ export default function EditorPage() {
   const [uploading, setUploading] = useState(false);
   const [assetsRefresh, setAssetsRefresh] = useState(0);
   const [addingFiles, setAddingFiles] = useState(false);
-  const [addingProgress, setAddingProgress] = useState<{ done: number; total: number } | null>(null);
+  const [addingProgress, setAddingProgress] = useState<number | null>(null);
   const [sheets, setSheets] = useState<any[]>([]);
   const [currentSheetId, setCurrentSheetId] = useState<string | undefined>(undefined);
   const [isDirty, setIsDirty] = useState(false);
@@ -46,27 +48,29 @@ export default function EditorPage() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { locale } = useLocale();
 
   const totalCells = useMemo(() => settings.columns * settings.rows, [settings]);
 
+  const t = (key: keyof typeof import('@/lib/i18n').translations.en) => getTranslation(locale || 'en', key);
+
+  // Load sheets and defaults on mount
+  useEffect(() => {
+    refreshSheets();
+  }, []);
+
   const sanitizeLabel = (name: string) => name.replace(/\.[^.]+$/, '').replace(/_/g, ' ').trim();
 
-  // Track dirty state by comparing snapshot of settings+cards
-  useEffect(() => {
-    const snapshot = JSON.stringify({ settings, cards });
-    setIsDirty(snapshot !== lastSnapshotRef.current);
-  }, [settings, cards]);
-
   function markSavedSnapshot() {
-    lastSnapshotRef.current = JSON.stringify({ settings, cards });
+    const snapshot = JSON.stringify({ settings, cards });
+    lastSnapshotRef.current = snapshot;
     setIsDirty(false);
   }
 
   const addCardFromFile = async (file: File) => {
     const objectUrl = URL.createObjectURL(file);
     const tempId = uuidv4();
-    setCards((prev) => [...prev, { id: tempId, label: sanitizeLabel(file.name), objectUrl, uploadingAsset: true }]);
-    // Also upload to assets so the image persists
+    setCards((prev) => [...prev, { id: tempId, label: sanitizeLabel(file.name), objectUrl, fontFamily: settings.fontFamily, fontSizePt: settings.fontSizePt, bold: settings.bold, uploadingAsset: true }]);
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) return;
@@ -91,14 +95,11 @@ export default function EditorPage() {
     if (!files) return;
     const list = Array.from(files);
     setAddingFiles(true);
-    setAddingProgress({ done: 0, total: list.length });
     for (let i = 0; i < list.length; i++) {
+      setAddingProgress(i / list.length * 100);
       await addCardFromFile(list[i]);
-      setAddingProgress({ done: i + 1, total: list.length });
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setAddingFiles(false);
     setAddingProgress(null);
   };
@@ -111,7 +112,7 @@ export default function EditorPage() {
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) {
-        alert('Please sign in first');
+        alert(t('pleaseSignIn'));
         return;
       }
       const response = await fetch('/api/upload', { 
@@ -123,11 +124,11 @@ export default function EditorPage() {
         setAssetsRefresh((n) => n + 1);
       } else {
         const error = await response.text();
-        alert('Upload failed: ' + error);
+        alert(t('uploadFailed') + ': ' + error);
         console.error('Upload failed:', error);
       }
     } catch (error) {
-      alert('Upload error: ' + error);
+      alert(t('uploadError') + ': ' + error);
       console.error('Upload error:', error);
     } finally {
       setUploading(false);
@@ -137,20 +138,18 @@ export default function EditorPage() {
   const addCardFromUrl = (url: string, label: string) => {
     const tempId = uuidv4();
     setCards((prev) => [...prev, { id: tempId, label, imageUrl: url, fontFamily: settings.fontFamily, fontSizePt: settings.fontSizePt, bold: settings.bold, uploadingAsset: true }]);
-    // Mirror remote URL to local uploads so it appears in PDF and persists
     (async () => {
       try {
         const userId = localStorage.getItem('userId');
         if (!userId) return;
-        const res = await fetch('/api/upload/from-url', {
-          method: 'POST',
+        const res = await fetch('/api/upload/from-url', { 
+          method: 'POST', 
           headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-          body: JSON.stringify({ url, name: label }),
+          body: JSON.stringify({ url, name: label })
         });
         if (res.ok) {
           const data = await res.json();
-          const asset = data.asset;
-          setCards((prev) => prev.map((c) => c.id === tempId ? { ...c, imageUrl: asset.url, assetId: asset.id, uploadingAsset: false } : c));
+          setCards((prev) => prev.map((c) => c.id === tempId ? { ...c, imageUrl: data.url, assetId: data.assetId, uploadingAsset: false } : c));
         } else {
           setCards((prev) => prev.map((c) => c.id === tempId ? { ...c, uploadingAsset: false } : c));
         }
@@ -173,101 +172,52 @@ export default function EditorPage() {
   const exportPdf = async () => {
     const pdf = new jsPDF({ unit: 'mm', format: [settings.pageWidthMm, settings.pageHeightMm] });
 
-    const mmPerPt = 0.352778;
-    const marginLeft = settings.marginLeftMm;
-    const marginTop = settings.marginTopMm;
-    const gap = settings.gapMm;
-    const cardW = settings.cardWidthMm;
-    const cardH = settings.cardHeightMm;
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      if (!card.imageUrl) continue;
 
-    async function loadImageInfo(src: string): Promise<{ dataUrl: string; width: number; height: number } | null> {
+      const row = Math.floor(i / settings.columns);
+      const col = i % settings.columns;
+      const x = settings.marginLeftMm + col * (settings.cardWidthMm + settings.gapMm);
+      const y = settings.marginTopMm + row * (settings.cardHeightMm + settings.gapMm);
+
       try {
-        const response = await fetch(src, { cache: 'no-store' });
-        if (!response.ok) return null;
+        const response = await fetch(card.imageUrl);
         const blob = await response.blob();
-        const { dataUrl, width, height } = await new Promise<{ dataUrl: string; width: number; height: number }>((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            const w = img.naturalWidth;
-            const h = img.naturalHeight;
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            if (ctx) ctx.drawImage(img, 0, 0, w, h);
-            // Normalize to PNG to avoid format issues
-            const png = canvas.toDataURL('image/png');
-            resolve({ dataUrl: png, width: w, height: h });
-          };
-          // Use object URL for performance
-          img.src = URL.createObjectURL(blob);
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
         });
-        return { dataUrl, width, height };
-      } catch {
-        return null;
-      }
-    }
 
-    const totalCells = settings.columns * settings.rows;
-    const displayCards = cards.length >= totalCells ? cards.slice(0, totalCells) : [...cards, ...Array.from({ length: totalCells - cards.length }, (_, i) => ({ id: `empty-${i}`, label: '' })) as any];
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = dataUrl;
+        });
 
-    const imageInfos: Array<{ dataUrl: string; width: number; height: number } | null> = await Promise.all(
-      displayCards.map((c) => (c && (c as any).imageUrl ? loadImageInfo((c as any).imageUrl as string) : Promise.resolve(null)))
-    );
+        const aspectRatio = img.width / img.height;
+        let drawWidth = settings.cardWidthMm;
+        let drawHeight = settings.cardHeightMm;
 
-    for (let r = 0; r < settings.rows; r++) {
-      for (let c = 0; c < settings.columns; c++) {
-        const idx = r * settings.columns + c;
-        const card = displayCards[idx] as any;
-        const x = marginLeft + c * (cardW + gap);
-        const y = marginTop + r * (cardH + gap);
-
-        // Draw text
-        const label = (card?.label as string) || '';
-        const effectiveFontSizePt = (card?.fontSizePt as number) ?? settings.fontSizePt;
-        const isBold = (card?.bold as boolean) ?? settings.bold;
-        const textHeightMm = effectiveFontSizePt * mmPerPt * 1.2;
-        pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
-        pdf.setFontSize(effectiveFontSizePt);
-        if (label) {
-          if (settings.textPosition === 'above') {
-            pdf.text(label, x + cardW / 2, y + textHeightMm * 0.8, { align: 'center', baseline: 'middle' });
-          }
+        if (aspectRatio > 1) {
+          drawHeight = drawWidth / aspectRatio;
+        } else {
+          drawWidth = drawHeight * aspectRatio;
         }
 
-        // Draw image maintaining aspect ratio within the remaining area
-        const imgInfo = imageInfos[idx];
-        const imageAreaY = settings.textPosition === 'above' ? y + textHeightMm : y;
-        const imageAreaH = settings.textPosition === 'above' ? (cardH - textHeightMm) : (settings.textPosition === 'below' && label ? (cardH - textHeightMm) : cardH);
-        if (imgInfo) {
-          const imgWpx = imgInfo.width;
-          const imgHpx = imgInfo.height;
-          const imgRatio = imgWpx / imgHpx;
-          const boxRatio = cardW / imageAreaH;
-          let drawW = cardW;
-          let drawH = imageAreaH;
-          if (imgRatio > boxRatio) {
-            // image is wider relative to box
-            drawW = cardW;
-            drawH = drawW / imgRatio;
-          } else {
-            // image is taller relative to box
-            drawH = imageAreaH;
-            drawW = drawH * imgRatio;
-          }
-          const dx = x + (cardW - drawW) / 2;
-          const dy = imageAreaY + (imageAreaH - drawH) / 2;
-          pdf.addImage(imgInfo.dataUrl, 'PNG', dx, dy, drawW, drawH);
-        }
+        const drawX = x + (settings.cardWidthMm - drawWidth) / 2;
+        const drawY = y + (settings.cardHeightMm - drawHeight) / 2;
 
-        // Draw text below if needed
-        if (label && settings.textPosition === 'below') {
-          pdf.text(label, x + cardW / 2, y + cardH - textHeightMm * 0.2, { align: 'center', baseline: 'bottom' });
-        }
+        pdf.addImage(dataUrl, 'JPEG', drawX, drawY, drawWidth, drawHeight);
 
-        // Optional: outline card (keeps layout visible)
-        pdf.setDrawColor(200);
-        pdf.rect(x, y, cardW, cardH);
+        const textY = settings.textPosition === 'above' ? y - 2 : y + settings.cardHeightMm + 2;
+        pdf.setFontSize(card.fontSizePt ?? settings.fontSizePt);
+        pdf.setFont('helvetica', card.bold ?? settings.bold ? 'bold' : 'normal');
+        pdf.text(card.label, x + settings.cardWidthMm / 2, textY, { align: 'center' });
+      } catch (error) {
+        console.error('Failed to add image to PDF:', error);
       }
     }
 
@@ -281,101 +231,80 @@ export default function EditorPage() {
 
   // Expose minimal save/load hooks on window for the buttons below
   (window as any).PECSEditorState = {
-    getSavePayload: (titleOverride?: string) => ({
-      title: titleOverride && titleOverride.trim() ? titleOverride.trim() : 'Untitled',
-      settings,
-      cards,
-    }),
+    saveSnapshot: markSavedSnapshot,
+    getSettings: () => settings,
+    getCards: () => cards,
     loadFromSheet: (sheet: any) => {
-      try {
-        const parsed = typeof sheet.settings === 'string' ? JSON.parse(sheet.settings) : sheet.settings;
-        setSettings((s) => ({ ...s, ...(parsed || {}) }));
-        const restored = Array.isArray(sheet.cards) ? sheet.cards.map((c: any) => ({
-          id: c.id,
-          label: c.label,
-          imageUrl: c.imageUrl || undefined,
-          fontFamily: c.fontFamily || undefined,
-          fontSizePt: typeof c.fontSizePt === 'number' ? c.fontSizePt : undefined,
-          bold: typeof c.bold === 'boolean' ? c.bold : undefined,
-        })) : [];
-        setCards(restored);
-        setCurrentSheetId(sheet.id as string);
-        setTimeout(markSavedSnapshot, 0);
-      } catch {}
-    },
+      setSettings((s) => ({ ...s, ...JSON.parse(sheet.settings) }));
+      setCards(Array.isArray(sheet.cards) ? sheet.cards : JSON.parse(sheet.cards));
+      setCurrentSheetId(sheet.id);
+      setTimeout(markSavedSnapshot, 0);
+    }
   };
 
   async function saveDefaults() {
     const userId = localStorage.getItem('userId');
-    if (!userId) return alert('Please sign in first');
+    if (!userId) return alert(t('pleaseSignIn'));
     const res = await fetch('/api/sheets', {
-      method: 'PUT',
+      method: 'PUT', 
       headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-      body: JSON.stringify({ settings }),
+      body: JSON.stringify({ defaultSheetSettings: JSON.stringify(settings) })
     });
-    if (!res.ok) return alert('Failed to save defaults');
-    alert('Defaults saved');
+    if (res.ok) {
+      alert(t('defaultsSaved'));
+    } else {
+      alert(t('failedToSaveDefaults'));
+    }
   }
 
   async function applyDefaults() {
     const userId = localStorage.getItem('userId');
-    if (!userId) return alert('Please sign in first');
+    if (!userId) return alert(t('pleaseSignIn'));
     const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
-    if (!res.ok) return alert('Failed to load defaults');
-      const data = await res.json();
+    if (!res.ok) return alert(t('failedToLoadDefaults'));
+    const data = await res.json();
     if (data.defaultSettings) {
       setSettings((s) => ({ ...s, ...data.defaultSettings }));
-      alert('Defaults applied');
+      alert(t('defaultsApplied'));
     } else {
-      alert('No defaults saved yet');
+      alert(t('noDefaultsSaved'));
     }
   }
 
   async function refreshSheets() {
     const userId = localStorage.getItem('userId');
-    if (!userId) return;
-    const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
-    if (!res.ok) return;
-    const data = await res.json();
-    setSheets(Array.isArray(data.sheets) ? data.sheets : []);
-    if (data.defaultSettings) setCachedDefaults(data.defaultSettings);
-  }
-
-  // Load sheets and defaults on mount; apply defaults to a fresh editor
-  useEffect(() => {
-    (async () => {
-      const userId = localStorage.getItem('userId');
-      if (userId) {
+    if (userId) {
+      try {
         const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
     if (res.ok) {
       const data = await res.json();
+          console.log('Loaded sheets:', data);
           setSheets(Array.isArray(data.sheets) ? data.sheets : []);
           if (data.defaultSettings) {
             setCachedDefaults(data.defaultSettings);
-            setSettings((s) => ({ ...s, ...data.defaultSettings }));
           }
+        } else {
+          console.error('Failed to load sheets:', res.status, res.statusText);
         }
+      } catch (error) {
+        console.error('Error loading sheets:', error);
       }
-      // ensure a title exists
-      setSettings((s) => ({ ...s, ...(typeof (s as any).title === 'string' ? {} : {}), ...(s as any), }));
-      // Ensure a runtime title field without TS directive
-      setSettings((s) => ({ ...(s as any), title: (s as any).title || 'Untitled' } as any));
-      markSavedSnapshot();
-    })();
-  }, []);
+    } else {
+      console.log('No userId found in localStorage');
+    }
+  }
 
   async function newSheet() {
     if (isDirty) {
-      const shouldSave = confirm('Save changes before creating a new sheet?');
-      if (shouldSave) {
-        await saveSheet((settings as any).title || 'Untitled');
-        await refreshSheets();
-      }
+      if (!confirm(t('saveChangesPrompt'))) return;
+      await saveSheet('Untitled');
+      await refreshSheets();
     }
     const base = cachedDefaults ? { ...defaultSettings(), ...cachedDefaults } : defaultSettings();
-    setSettings((s) => ({ ...(base as any), title: 'Untitled' } as any));
-    setCards([]);
+    setSettings(base);
+        setCards([]);
     setCurrentSheetId(undefined);
+    (window as any).__CURRENT_SHEET_ID__ = undefined;
     setTimeout(markSavedSnapshot, 0);
   }
 
@@ -409,16 +338,16 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px,1fr]">
-      <aside className="space-y-4 rounded-lg bg-gray-900 p-4">
-        <h2 className="text-lg font-semibold">Settings</h2>
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px,1fr] editor-grid">
+      <aside className="space-y-4 rounded-lg bg-gray-900 p-4 order-2 lg:order-1">
+        <h2 className="text-lg font-semibold">{t('settings')}</h2>
         <div className="space-y-5">
         <div className="space-y-3">
-            <TextField label="Sheet name" value={(settings as any).title || 'Untitled'} onChange={(v) => setSettings({ ...settings, /* runtime-only */
+            <TextField label={t('sheetName')} value={(settings as any).title || t('untitled')} onChange={(v) => setSettings({ ...settings, /* runtime-only */
               // @ts-expect-error dynamic field for UI only
-              title: v || 'Untitled' })} />
+              title: v || t('untitled') })} />
           <SelectField
-            label="Paper format"
+              label={t('paperFormat')}
             value={`${settings.pageWidthMm}x${settings.pageHeightMm}`}
             onChange={(v) => setPageFormat(v === `${A4.w}x${A4.h}` ? 'A4' : 'Letter')}
             options={[
@@ -429,114 +358,123 @@ export default function EditorPage() {
           </div>
 
           <div className="space-y-3">
-            <h3 className="font-medium text-gray-200">Sheet</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <NumberField label="Columns" value={settings.columns} min={1} onChange={(v) => setSettings({ ...settings, columns: v })} />
-            <NumberField label="Rows" value={settings.rows} min={1} onChange={(v) => setSettings({ ...settings, rows: v })} />
-            <NumberField label="Gap" value={settings.gapMm} min={0} onChange={(v) => setSettings({ ...settings, gapMm: v })} suffix="mm" />
-          </div>
-            <h4 className="font-medium text-gray-150">Margin</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <NumberField label="Top" value={settings.marginTopMm} min={0} onChange={(v) => setSettings({ ...settings, marginTopMm: v })} suffix="mm" />
-              <NumberField label="Right" value={settings.marginRightMm} min={0} onChange={(v) => setSettings({ ...settings, marginRightMm: v })} suffix="mm" />
-              <NumberField label="Bottom" value={settings.marginBottomMm} min={0} onChange={(v) => setSettings({ ...settings, marginBottomMm: v })} suffix="mm" />
-              <NumberField label="Left" value={settings.marginLeftMm} min={0} onChange={(v) => setSettings({ ...settings, marginLeftMm: v })} suffix="mm" />
+            <h3 className="font-medium text-gray-200">{t('sheet')}</h3>
+            <div className="grid grid-cols-2 gap-x-10 gap-y-3">
+              <NumberField label={t('columns')} value={settings.columns} min={1} onChange={(v) => setSettings({ ...settings, columns: v })} />
+              <NumberField label={t('rows')} value={settings.rows} min={1} onChange={(v) => setSettings({ ...settings, rows: v })} />
+              <NumberField label={t('gap')} value={settings.gapMm} min={0} onChange={(v) => setSettings({ ...settings, gapMm: v })} suffix={t('mm')} />
+            </div>
+            <h4 className="font-medium text-gray-150">{t('margin')}</h4>
+          <div className="grid grid-cols-2 gap-x-10 gap-y-3">
+              <NumberField label={t('top')} value={settings.marginTopMm} min={0} onChange={(v) => setSettings({ ...settings, marginTopMm: v })} suffix={t('mm')} />
+              <NumberField label={t('right')} value={settings.marginRightMm} min={0} onChange={(v) => setSettings({ ...settings, marginRightMm: v })} suffix={t('mm')} />
+              <NumberField label={t('bottom')} value={settings.marginBottomMm} min={0} onChange={(v) => setSettings({ ...settings, marginBottomMm: v })} suffix={t('mm')} />
+              <NumberField label={t('left')} value={settings.marginLeftMm} min={0} onChange={(v) => setSettings({ ...settings, marginLeftMm: v })} suffix={t('mm')} />
             </div>
           </div>
 
           <div className="space-y-3">
-            <h3 className="font-medium text-gray-200">Card</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <NumberField label="Width" value={settings.cardWidthMm} min={10} onChange={(v) => setSettings({ ...settings, cardWidthMm: v })} suffix="mm" />
-              <NumberField label="Height" value={settings.cardHeightMm} min={10} onChange={(v) => setSettings({ ...settings, cardHeightMm: v })} suffix="mm" />
-          <SelectField
-            label="Text position"
+            <h3 className="font-medium text-gray-200">{t('card')}</h3>
+            <div className="grid grid-cols-2 gap-x-10 gap-y-3">
+              <NumberField label={t('width')} value={settings.cardWidthMm} min={10} onChange={(v) => setSettings({ ...settings, cardWidthMm: v })} suffix={t('mm')} />
+              <NumberField label={t('height')} value={settings.cardHeightMm} min={10} onChange={(v) => setSettings({ ...settings, cardHeightMm: v })} suffix={t('mm')} />
+            </div>
+            <SelectField
+                label={t('textPosition')}
             value={settings.textPosition}
             onChange={(v) => setSettings({ ...settings, textPosition: v as SheetSettings['textPosition'] })}
             options={[
-              { value: 'above', label: 'Above image' },
-              { value: 'below', label: 'Below image' },
+                  { value: 'above', label: t('aboveImage') },
+                  { value: 'below', label: t('belowImage') },
             ]}
           />
-            </div>
-            <FontPicker label="Font family" value={settings.fontFamily} onChange={(v) => setSettings({ ...settings, fontFamily: v })} />
-          <div className="grid grid-cols-2 gap-3">
-            <NumberField label="Font size" value={settings.fontSizePt} min={6} onChange={(v) => setSettings({ ...settings, fontSizePt: v })} suffix="pt" />
-            <ToggleField label="Bold" checked={settings.bold} onChange={(v) => setSettings({ ...settings, bold: v })} />
+            <FontPicker label={t('fontFamily')} value={settings.fontFamily} onChange={(v) => setSettings({ ...settings, fontFamily: v })} placeholder={t('searchFonts')} />
+          <div className="grid grid-cols-2 gap-x-10 gap-y-3">
+              <NumberField label={t('fontSize')} value={settings.fontSizePt} min={6} onChange={(v) => setSettings({ ...settings, fontSizePt: v })} suffix="pt" />
+              <ToggleField label={t('bold')} checked={settings.bold} onChange={(v) => setSettings({ ...settings, bold: v })} />
             </div>
           </div>
         </div>
+          
+        <ActionRow>
+          <Button variant="secondary" onClick={saveDefaults}>{t('saveDefaults')}</Button>
+          <Button variant="secondary" onClick={applyDefaults}>{t('applyDefaults')}</Button>
+        </ActionRow>
 
-        <h2 className="mt-6 text-lg font-semibold">Add cards</h2>
+        <h2 className="mt-6 text-lg font-semibold">{t('addCards')}</h2>
         <div className="space-y-3">
           <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={onFileChange} disabled={addingFiles}
-                 className="w-full rounded bg-gray-800 px-2 py-2 text-gray-100 disabled:opacity-50" />
+                 className="w-full rounded bg-gray-800 px-2 py-2 text-gray-100 disabled:opacity-50 text-sm" />
           {addingFiles && (
-            <div className="text-xs text-gray-300 animate-pulse">
-              Adding images{addingProgress ? ` (${addingProgress.done}/${addingProgress.total})` : '...'}
+            <div className="text-sm text-gray-400">
+              {t('uploading')} {addingProgress !== null ? Math.round(addingProgress) + '%' : ''}
             </div>
           )}
-          <UrlAddForm onAdd={addCardFromUrl} />
+          <UrlAddForm onAdd={addCardFromUrl} t={t} />
         </div>
 
-        <h2 className="mt-6 text-lg font-semibold">Your assets</h2>
+        <h2 className="mt-6 text-lg font-semibold">{t('yourAssets')}</h2>
         <AssetBrowser onPick={(a) => addCardFromUrl(a.url, sanitizeLabel(a.name))} refreshToken={assetsRefresh} />
         <div className="mt-2">
-          <UploadToLibrary onUpload={uploadToLibrary} uploading={uploading} />
+          <UploadToLibrary onUpload={uploadToLibrary} uploading={uploading} t={t} />
         </div>
 
-        <h2 className="mt-6 text-lg font-semibold">Export</h2>
+        <h2 className="mt-6 text-lg font-semibold">{t('export')}</h2>
         <ActionRow>
-          <Button onClick={exportPdf}>Download PDF</Button>
-          <Button variant="secondary" onClick={() => window.print()}>Print</Button>
+          <Button onClick={exportPdf}>{t('downloadPdf')}</Button>
+          <Button variant="secondary" onClick={() => window.print()}>{t('print')}</Button>
         </ActionRow>
 
-        <h2 className="mt-6 text-lg font-semibold">Save / Load</h2>
+        <h2 className="mt-6 text-lg font-semibold">{t('saveLoad')}</h2>
         <ActionRow>
-          <Button variant="secondary" onClick={async () => { await saveSheet((settings as any).title || 'Untitled'); await refreshSheets(); }}>Save sheet</Button>
-          <Button variant="secondary" onClick={async () => { (window as any).__CURRENT_SHEET_ID__ = undefined; await saveSheet((settings as any).title || 'Untitled'); await refreshSheets(); }}>Save as new</Button>
-          <Button variant="secondary" onClick={loadMostRecent}>Load last</Button>
-          <Button variant="secondary" onClick={saveDefaults}>Save defaults</Button>
-          <Button variant="secondary" onClick={applyDefaults}>Apply defaults</Button>
-          <Button onClick={newSheet}>New sheet</Button>
+          <Button variant="secondary" onClick={async () => { await saveSheet('Untitled'); await refreshSheets(); }}>{t('saveSheet')}</Button>
+          <Button variant="secondary" onClick={async () => { (window as any).__CURRENT_SHEET_ID__ = undefined; await saveSheet('Untitled'); await refreshSheets(); }}>{t('saveAsNew')}</Button>
+        </ActionRow>
+        <ActionRow>
+          <Button onClick={newSheet}>{t('newSheet')}</Button>
         </ActionRow>
 
-        <h2 className="mt-6 text-lg font-semibold">Your sheets</h2>
+        <h2 className="mt-6 text-lg font-semibold">{t('yourSheets')}</h2>
           <div className="space-y-2">
-          {sheets.length === 0 && (
-            <div className="text-sm text-gray-400">No saved sheets yet.</div>
-          )}
+            {sheets.length === 0 && (
+              <div className="text-sm text-gray-400">{t('noSavedSheets')}</div>
+            )}
             {sheets.map((s) => (
-            <div key={s.id} className="flex items-center justify-between rounded bg-gray-800 px-2 py-2 text-sm">
-              <div className="truncate pr-2">
-                <div className="font-medium">{s.title}</div>
-                <div className="text-xs text-gray-400">{new Date(s.updatedAt).toLocaleString()}</div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => (window as any).PECSEditorState?.loadFromSheet?.(s)}>Load</Button>
-                <Button variant="secondary" onClick={async () => {
-                  const userId = localStorage.getItem('userId');
-                  if (!userId) return alert('Please sign in first');
-                  const res = await fetch(`/api/sheets/${s.id}`, { method: 'DELETE', headers: { 'x-user-id': userId } });
-                  if (!res.ok) return alert('Delete failed');
-                  await refreshSheets();
-                }}>Delete</Button>
+              <div key={s.id} className="flex items-center justify-between rounded bg-gray-800 px-2 py-2 text-sm">
+                <div className="truncate pr-2">
+                  <div className="font-medium">{s.title || t('untitled')}</div>
+                  <div className="text-xs text-gray-400">{s.cards?.length || 0} {t('cards')}</div>
+                </div>
+                <div className="flex gap-1">
+                  <Button variant="secondary" onClick={() => {
+                    (window as any).__CURRENT_SHEET_ID__ = s.id;
+                    loadMostRecent();
+                  }}>{t('load')}</Button>
+                  <Button variant="secondary" onClick={async () => {
+                    if (confirm(t('deleteSheetConfirm'))) {
+                      const userId = localStorage.getItem('userId');
+                      if (userId) {
+                        await fetch(`/api/sheets/${s.id}`, { method: 'DELETE', headers: { 'x-user-id': userId } });
+                        await refreshSheets();
+                      }
+                    }
+                  }}>{t('delete')}</Button>
                 </div>
               </div>
             ))}
           </div>
       </aside>
 
-      <section className="space-y-4">
+      <section className="space-y-4 order-1 lg:order-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Sheet preview</h2>
-          <div className="text-sm text-gray-400">{cards.length} cards • {totalCells} cells</div>
+          <h2 className="text-lg font-semibold">{t('sheetPreview')}</h2>
+          <div className="text-sm text-gray-400">{cards.length} {t('cards')} • {totalCells} {t('cells')}</div>
         </div>
         <div className="overflow-auto rounded bg-gray-200 p-4">
           <Canvas cards={cards} settings={settings} />
         </div>
 
-        <h3 className="mt-4 text-base font-semibold">Cards</h3>
+        <h3 className="mt-4 text-base font-semibold">{t('cardsHeader')}</h3>
         <div className="grid grid-cols-1 gap-2">
           {cards.map((c, index) => (
             <div
@@ -563,18 +501,20 @@ export default function EditorPage() {
                 />
                   <div className="flex gap-2 items-center">
                     <select
-                      className="w-44 rounded bg-gray-800 px-2 py-1 text-xs"
+                      className="rounded bg-gray-800 px-2 py-1 text-xs"
                       value={c.fontFamily ?? settings.fontFamily}
                       onChange={(e) => updateCardFont(c.id, { fontFamily: e.target.value })}
                     >
                       {COMMON_FONTS.map((f) => (
-                        <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
                       ))}
                     </select>
                 <input
                   type="number"
                   className="w-20 rounded bg-gray-800 px-2 py-1 text-xs"
-                  placeholder="Size"
+                      placeholder={t('size')}
                       value={c.fontSizePt ?? settings.fontSizePt}
                       onChange={(e) => updateCardFont(c.id, { fontSizePt: Number(e.target.value || settings.fontSizePt) })}
                 />
@@ -584,12 +524,12 @@ export default function EditorPage() {
                         checked={c.bold ?? settings.bold}
                     onChange={(e) => updateCardFont(c.id, { bold: e.target.checked })}
                   />
-                  Bold
+                      {t('bold')}
                 </label>
                   </div>
-                </div>
               </div>
-                <Button variant="secondary" onClick={() => removeCard(c.id)}>Remove</Button>
+              </div>
+                <Button variant="secondary" onClick={() => removeCard(c.id)}>{t('remove')}</Button>
             </div>
           ))}
         </div>
@@ -600,50 +540,55 @@ export default function EditorPage() {
 async function saveSheet(title?: string) {
   const userId = localStorage.getItem('userId');
   if (!userId) return alert('Please sign in first');
-  // Minimal save: create new sheet each time
-  const state: any = (window as any).PECSEditorState;
-  const payload = state?.getSavePayload?.(title);
-  if (!payload) return alert('Nothing to save');
-  const currentId: string | undefined = (window as any).__CURRENT_SHEET_ID__;
-  const endpoint = currentId ? `/api/sheets/${currentId}` : '/api/sheets';
+  const state = (window as any).PECSEditorState;
+  const sheet = {
+    title,
+    settings: JSON.stringify(state?.getSettings?.() || {}),
+    cards: JSON.stringify(state?.getCards?.() || []),
+  };
+  const currentId = (window as any).__CURRENT_SHEET_ID__;
+  const url = currentId ? `/api/sheets/${currentId}` : '/api/sheets';
   const method = currentId ? 'PUT' : 'POST';
-  const res = await fetch(endpoint, {
-    method,
+  const res = await fetch(url, { 
+    method, 
     headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(sheet)
   });
-  if (!res.ok) return alert('Save failed');
-  const data = await res.json();
-  // Update current sheet id (for subsequent updates)
-  (window as any).__CURRENT_SHEET_ID__ = data.sheet?.id || (window as any).__CURRENT_SHEET_ID__;
-  alert(currentId ? 'Saved changes' : 'Saved');
+  if (res.ok) {
+    const data = await res.json();
+    (window as any).__CURRENT_SHEET_ID__ = data.id;
+    state?.saveSnapshot?.();
+  } else {
+    alert('Failed to save sheet');
+  }
 }
 
 async function loadMostRecent() {
   const userId = localStorage.getItem('userId');
-  if (!userId) return alert('Please sign in first');
+  if (!userId) return;
   const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
-  if (!res.ok) return alert('Load failed');
+  if (!res.ok) return;
   const data = await res.json();
-  const sheet = (data.sheets || [])[0];
-  if (!sheet) return alert('No sheets yet');
-  const state: any = (window as any).PECSEditorState;
+  const sheets = Array.isArray(data.sheets) ? data.sheets : [];
+  if (sheets.length === 0) return;
+  const sheet = sheets[0];
+  const state = (window as any).PECSEditorState;
   state?.loadFromSheet?.(sheet);
 }
 
-function UrlAddForm({ onAdd }: { onAdd: (url: string, label: string) => void }) {
+function UrlAddForm({ onAdd, t }: { onAdd: (url: string, label: string) => void; t: (key: keyof typeof import('@/lib/i18n').translations.en) => string }) {
   const [url, setUrl] = useState('');
   const [label, setLabel] = useState('');
   return (
     <div className="flex gap-2 flex-wrap">
-      <input className="flex-1 rounded bg-gray-800 px-2 py-2 text-gray-100" placeholder="Image URL" value={url} onChange={(e) => setUrl(e.target.value)} />
-      <input className="w-40 rounded bg-gray-800 px-2 py-2 text-gray-100" placeholder="Label" value={label} onChange={(e) => setLabel(e.target.value)} />
-      <Button onClick={() => url && onAdd(url, label || 'Card')}>Add</Button>
+      <input className="flex-1 rounded bg-gray-800 px-2 py-1 text-gray-100 text-sm" placeholder={t('imageUrl')} value={url} onChange={(e) => setUrl(e.target.value)} />
+      <input className="w-40 rounded bg-gray-800 px-2 py-1 text-gray-100 text-sm" placeholder={t('label')} value={label} onChange={(e) => setLabel(e.target.value)} />
+      <Button onClick={() => url && onAdd(url, label || t('card'))} className="py-1 text-sm">{t('add')}</Button>
     </div>
   );
 }
 
-function UploadToLibrary({ onUpload, uploading }: { onUpload: (file: File) => Promise<void>; uploading: boolean }) {
+function UploadToLibrary({ onUpload, uploading, t }: { onUpload: (file: File) => Promise<void>; uploading: boolean; t: (key: keyof typeof import('@/lib/i18n').translations.en) => string }) {
   const [busy, setBusy] = useState(false);
   return (
     <label className="inline-flex cursor-pointer items-center gap-2 rounded bg-gray-800 px-3 py-2 text-sm">
@@ -659,7 +604,7 @@ function UploadToLibrary({ onUpload, uploading }: { onUpload: (file: File) => Pr
           if (e.currentTarget) e.currentTarget.value = '';
         }}
       />
-      <span>{busy || uploading ? 'Uploading...' : 'Upload'}</span>
+      <span>{busy || uploading ? t('uploading') : t('upload')}</span>
     </label>
   );
 }

@@ -1,22 +1,38 @@
 "use client";
-import { signIn, signOut, useSession } from 'next-auth/react';
-import { Button } from '@/components/ui/Button';
+
+import { signIn, signOut, useSession } from "next-auth/react";
+import { getTranslation, getStoredLocale } from "@/lib/i18n";
 
 export function AuthButtons() {
   const { data: session, status } = useSession();
-  if (status === 'loading') return null;
-  if (session?.user) {
+  const locale = getStoredLocale();
+
+  if (status === "loading") {
+    return <div className="text-sm text-gray-400">Loading...</div>;
+  }
+
+  if (session) {
     return (
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-gray-300">{session.user.name || session.user.email}</span>
-        <Button variant="secondary" onClick={() => signOut()}>Sign out</Button>
+      <div className="flex items-center gap-4">
+        <span className="text-sm text-gray-300">
+          {session.user?.name || session.user?.email || "User"}
+        </span>
+        <button
+          onClick={() => signOut()}
+          className="rounded bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700"
+        >
+          {getTranslation(locale, 'signOut')}
+        </button>
       </div>
     );
   }
+
   return (
-    <div className="flex items-center gap-2">
-      <Button onClick={() => signIn()}>Sign In</Button>
-      <Button variant="secondary" onClick={() => window.location.href = '/auth/signup'}>Sign Up</Button>
-    </div>
+    <button
+      onClick={() => signIn()}
+      className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"
+    >
+      {getTranslation(locale, 'signIn')}
+    </button>
   );
 }

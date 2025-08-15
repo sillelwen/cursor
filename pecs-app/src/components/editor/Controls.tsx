@@ -8,7 +8,7 @@ export function NumberField({ label, value, onChange, min = 0, step = 1, suffix 
 }) {
   const handle = (e: ChangeEvent<HTMLInputElement>) => onChange(parseFloat(e.target.value));
   return (
-    <label className="flex items-center justify-start gap-2 text-sm">
+    <label className="flex items-center justify-between gap-2 text-sm">
       <span className="text-gray-300">{label}</span>
       <div className="flex items-center gap-1">
         <input type="number" min={min} step={step} value={value} onChange={handle} className="w-14 rounded bg-gray-800 px-2 py-1 text-gray-100" />
@@ -71,7 +71,7 @@ export const COMMON_FONTS = [
   'Comic Sans MS, cursive, sans-serif',
 ];
 
-export function FontPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+export function FontPicker({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void, placeholder: string }) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -84,7 +84,7 @@ export function FontPicker({ label, value, onChange }: { label: string; value: s
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search fonts"
+          placeholder={placeholder}
           className="w-48 rounded bg-gray-800 px-2 py-1 text-gray-100"
         />
       </div>

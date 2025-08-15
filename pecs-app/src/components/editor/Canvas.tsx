@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale } from '@/contexts/LocaleContext';
+import { getTranslation } from '@/lib/i18n';
 import { useMemo } from 'react';
 
 export type TextPosition = 'above' | 'below';
@@ -63,7 +65,8 @@ export function Canvas({
     fontSizePt,
     bold,
   } = settings;
-
+  const { locale } = useLocale();
+  const t = (key: keyof typeof import('@/lib/i18n').translations.en) => getTranslation(locale || 'en', key);
   const pageStyle = useMemo(() => ({
     width: mmToPx(pageWidthMm),
     height: mmToPx(pageHeightMm),
@@ -134,7 +137,7 @@ export function Canvas({
                 </>
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                  No image
+                  {t('noImage')}
                 </div>
               )}
             </div>
