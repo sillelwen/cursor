@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=David+Libre:wght@400;500;700&family=Heebo:wght@100..900&family=Open+Sans:ital,wdth,wght@0,75..100,300..800;1,75..100,300..800&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -42,6 +43,165 @@ body {
   .print-img { display: block !important; }
   @page {
     margin: 0;
+    overflow: hidden;
+  }
+}
+
+/* Accordeon */
+.accordeonTrigger::after {
+  content: "";
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  float: inline-end;
+  background-color: currentColor;
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat center / contain;
+  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat center / contain;
+}
+.accordeonTrigger.closed::after {
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat center / contain;
+  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat center / contain;
+}
+
+/* Toggle switch */
+.toggle {
+  position: relative;
+  display: inline-grid;
+  grid-template-areas: 'toggle label';
+  grid-template-columns: 4ex max-content;
+  grid-template-rows: min-content;
+  column-gap: 1ex;
+  align-content: center;
+}
+.toggle.grid, .toggle.block {
+  display: grid;
+}
+/* Hide default HTML checkbox */
+.toggle input[type="checkbox"] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  grid-area: toggle;
+}
+
+/* The slider */
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: .4ex;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+  height: 2ex;
+  grid-area: toggle;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 1.5ex;
+  width: 1.5ex;
+  inset-inline-start: 0.5ex;
+  bottom: 0.28ex;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.toggle input[type="checkbox"]:checked + .slider {
+  background-color: #2196F3;
+}
+
+.toggle input[type="checkbox"]:focus + .slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+.toggle input[type="checkbox"]:checked + .slider:before {
+  -webkit-transform: translateX(1.5ex);
+  -ms-transform: translateX(1.5ex);
+  transform: translateX(1.5ex);
+}
+[dir="rtl"] .toggle input[type="checkbox"]:checked + .slider:before {
+  -webkit-transform: translateX(-1.5ex);
+  -ms-transform: translateX(-1.5ex);
+  transform: translateX(-1.5ex);
+}
+
+.toggle .toggle-label {
+  grid-area: label;
+}
+
+/* Rounded sliders */
+.slider.round {
+  border-radius: 2ex;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+/* Color picker */
+.color input[type="color"] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.color .preview {
+  display: inline-block;
+  width: 2rem;
+  height: 1.5rem;
+  border-radius: 15%;
+  border: 1px solid var(--text);
+}
+
+.transparent-bg {
+  --tile: 12px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='16' height='16' fill='%23ffffff'/><rect width='8' height='8' fill='%23dcdcdc'/><rect x='8' y='8' width='8' height='8' fill='%23dcdcdc'/></svg>");
+  background-repeat: repeat;
+  background-size: var(--tile) var(--tile);
+}
+
+.tile-grid-container {
+  display: grid;
+  grid-template-columns: repeat(4, 25%);
+  max-width: 100%;
+  gap: 0.3rem;
+}
+.personalAssetsGrid .tile-grid-item>button {
+  justify-items: center;
+  width: 100%;
+  height: -webkit-fill-available;
+  display: grid;
+  grid-template-rows: auto min-content;
+}
+.personalAssetsGrid .tile-grid-item>button>img {
+  object-fit: scale-down;
+  align-self: center;
+}
+.personalAssetsGrid .tile-grid-item>button>div {
+  object-fit: scale-down;
+}
+.tile-grid-container > .tile-grid-item > * {
+  display: block;
+  width: 100%;
+  object-fit: contain;
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.2rem;
+  button {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  button:disabled {
+    background-color: rgb(37, 99, 235);
+    font-weight: 800;
+    border-radius: 50%;
   }
 }
 

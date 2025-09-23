@@ -1,7 +1,5 @@
 "use client";
 
-import { useLocale } from '@/contexts/LocaleContext';
-import { getTranslation } from '@/lib/i18n';
 import { useMemo } from 'react';
 
 export type TextPosition = 'above' | 'below';
@@ -44,9 +42,11 @@ function mmToPx(mm: number, dpi = 96) {
 export function Canvas({
   cards,
   settings,
+  t,
 }: {
   cards: CardData[];
   settings: SheetSettings;
+  t: (key: keyof typeof import('@/lib/i18n').translations.en) => string;
 }) {
   const {
     columns,
@@ -65,8 +65,6 @@ export function Canvas({
     fontSizePt,
     bold,
   } = settings;
-  const { locale } = useLocale();
-  const t = (key: keyof typeof import('@/lib/i18n').translations.en) => getTranslation(locale || 'en', key);
   const pageStyle = useMemo(() => ({
     width: mmToPx(pageWidthMm),
     height: mmToPx(pageHeightMm),

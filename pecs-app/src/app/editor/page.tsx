@@ -4,11 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, CardData, SheetSettings } from '@/components/editor/Canvas';
 import { NumberField, SelectField, TextField, ToggleField, ActionRow, Button, FontPicker, COMMON_FONTS } from '@/components/editor/Controls';
 import { AssetBrowser } from '@/components/editor/AssetBrowser';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import { v4 as uuidv4 } from 'uuid';
 import { getTranslation } from '@/lib/i18n';
 import { useLocale } from '@/contexts/LocaleContext';
+import html2pdf from 'html2pdf.js';
+import { Accordeon } from '@/components/ui/Accordeon';
 
 const A4 = { w: 210, h: 297 };
 const Letter = { w: 215.9, h: 279.4 };
@@ -70,19 +70,19 @@ export default function EditorPage() {
   const addCardFromFile = async (file: File) => {
     const objectUrl = URL.createObjectURL(file);
     const tempId = uuidv4();
-    setCards((prev) => [...prev, { id: tempId, label: sanitizeLabel(file.name), objectUrl, fontFamily: settings.fontFamily, fontSizePt: settings.fontSizePt, bold: settings.bold, uploadingAsset: true }]);
+    setCards((prev) => [...prev, { id: tempId, label: sanitizeLabel(file.name), objectUrl, uploadingAsset: true }]);
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) return;
-    const form = new FormData();
-    form.append('file', file);
-    form.append('name', file.name);
+      const form = new FormData();
+      form.append('file', file);
+      form.append('name', file.name);
       const res = await fetch('/api/upload', { method: 'POST', headers: { 'x-user-id': userId }, body: form });
-    if (res.ok) {
-      const data = await res.json();
+      if (res.ok) {
+        const data = await res.json();
         const asset = data.asset;
         setCards((prev) => prev.map((c) => c.id === tempId ? { ...c, imageUrl: asset.url, assetId: asset.id, uploadingAsset: false } : c));
-    } else {
+      } else {
         setCards((prev) => prev.map((c) => c.id === tempId ? { ...c, uploadingAsset: false } : c));
       }
     } catch {
@@ -115,9 +115,9 @@ export default function EditorPage() {
         alert(t('pleaseSignIn'));
         return;
       }
-      const response = await fetch('/api/upload', { 
-        method: 'POST', 
-        body: form, 
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: form,
         headers: { 'x-user-id': userId },
       });
       if (response.ok) {
@@ -137,13 +137,13 @@ export default function EditorPage() {
 
   const addCardFromUrl = (url: string, label: string) => {
     const tempId = uuidv4();
-    setCards((prev) => [...prev, { id: tempId, label, imageUrl: url, fontFamily: settings.fontFamily, fontSizePt: settings.fontSizePt, bold: settings.bold, uploadingAsset: true }]);
+    setCards((prev) => [...prev, { id: tempId, label, imageUrl: url, uploadingAsset: true }]);
     (async () => {
       try {
         const userId = localStorage.getItem('userId');
         if (!userId) return;
-        const res = await fetch('/api/upload/from-url', { 
-          method: 'POST', 
+        const res = await fetch('/api/upload/from-url', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
           body: JSON.stringify({ url, name: label })
         });
@@ -170,58 +170,16 @@ export default function EditorPage() {
   const removeCard = (id: string) => setCards((prev) => prev.filter((c) => c.id !== id));
 
   const exportPdf = async () => {
-    const pdf = new jsPDF({ unit: 'mm', format: [settings.pageWidthMm, settings.pageHeightMm] });
-
-    for (let i = 0; i < cards.length; i++) {
-      const card = cards[i];
-      if (!card.imageUrl) continue;
-
-      const row = Math.floor(i / settings.columns);
-      const col = i % settings.columns;
-      const x = settings.marginLeftMm + col * (settings.cardWidthMm + settings.gapMm);
-      const y = settings.marginTopMm + row * (settings.cardHeightMm + settings.gapMm);
-
-      try {
-        const response = await fetch(card.imageUrl);
-        const blob = await response.blob();
-        const dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-
-        const img = new Image();
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = dataUrl;
-        });
-
-        const aspectRatio = img.width / img.height;
-        let drawWidth = settings.cardWidthMm;
-        let drawHeight = settings.cardHeightMm;
-
-        if (aspectRatio > 1) {
-          drawHeight = drawWidth / aspectRatio;
-        } else {
-          drawWidth = drawHeight * aspectRatio;
-        }
-
-        const drawX = x + (settings.cardWidthMm - drawWidth) / 2;
-        const drawY = y + (settings.cardHeightMm - drawHeight) / 2;
-
-        pdf.addImage(dataUrl, 'JPEG', drawX, drawY, drawWidth, drawHeight);
-
-        const textY = settings.textPosition === 'above' ? y - 2 : y + settings.cardHeightMm + 2;
-        pdf.setFontSize(card.fontSizePt ?? settings.fontSizePt);
-        pdf.setFont('helvetica', card.bold ?? settings.bold ? 'bold' : 'normal');
-        pdf.text(card.label, x + settings.cardWidthMm / 2, textY, { align: 'center' });
-      } catch (error) {
-        console.error('Failed to add image to PDF:', error);
-      }
-    }
-
-    pdf.save('pecs-sheet.pdf');
+    const element = document.getElementById('print-area');
+    if (!element) return;
+    var opt = {
+      margin: 0,
+      filename: `${(settings as any).title || t('untitled')}.pdf`,
+      image: { type: 'png', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'A4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(element).save();
   };
 
   const setPageFormat = (format: 'A4' | 'Letter') => {
@@ -246,7 +204,7 @@ export default function EditorPage() {
     const userId = localStorage.getItem('userId');
     if (!userId) return alert(t('pleaseSignIn'));
     const res = await fetch('/api/sheets', {
-      method: 'PUT', 
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
       body: JSON.stringify({ defaultSheetSettings: JSON.stringify(settings) })
     });
@@ -276,8 +234,8 @@ export default function EditorPage() {
     if (userId) {
       try {
         const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
-    if (res.ok) {
-      const data = await res.json();
+        if (res.ok) {
+          const data = await res.json();
           console.log('Loaded sheets:', data);
           setSheets(Array.isArray(data.sheets) ? data.sheets : []);
           if (data.defaultSettings) {
@@ -303,7 +261,7 @@ export default function EditorPage() {
     }
     const base = cachedDefaults ? { ...defaultSettings(), ...cachedDefaults } : defaultSettings();
     setSettings(base);
-        setCards([]);
+    setCards([]);
     setCurrentSheetId(undefined);
     (window as any).__CURRENT_SHEET_ID__ = undefined;
     setTimeout(markSavedSnapshot, 0);
@@ -341,138 +299,143 @@ export default function EditorPage() {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px,1fr] editor-grid">
       <aside className="space-y-4 rounded-lg bg-gray-900 p-4 order-2 lg:order-1">
-        <h2 className="text-lg font-semibold">{t('settings')}</h2>
-        <div className="space-y-5">
         <div className="space-y-3">
-            <TextField label={t('sheetName')} value={(settings as any).title || t('untitled')} onChange={(v) => setSettings({ ...settings, /* runtime-only */
-              // @ts-expect-error dynamic field for UI only
-              title: v || t('untitled') })} />
-          <SelectField
-              label={t('paperFormat')}
-            value={`${settings.pageWidthMm}x${settings.pageHeightMm}`}
-            onChange={(v) => setPageFormat(v === `${A4.w}x${A4.h}` ? 'A4' : 'Letter')}
-            options={[
-              { value: `${A4.w}x${A4.h}`, label: 'A4 (210×297 mm)' },
-              { value: `${Letter.w}x${Letter.h}`, label: 'Letter (8.5×11 in)' },
-            ]}
-          />
-          </div>
+          <TextField label={t('sheetName')} value={(settings as any).title || t('untitled')} onChange={(v) => setSettings({
+            ...settings, /* runtime-only */
+            // @ts-expect-error dynamic field for UI only
+            title: v || t('untitled')
+          })} />
+          <ActionRow>
+            <Button className="text-sm py-1" variant="secondary" onClick={async () => { await saveSheet(t, (settings as any).title || t('untitled')); await refreshSheets(); }}>{t('saveSheet')}</Button>
+            <Button className="text-sm py-1" variant="secondary" onClick={async () => { (window as any).__CURRENT_SHEET_ID__ = undefined; await saveSheet(t, (settings as any).title || t('untitled')); await refreshSheets(); }}>{t('saveAsNew')}</Button>
+          </ActionRow>
+          <ActionRow>
+            <Button className="text-sm py-1" onClick={newSheet}>{t('newSheet')}</Button>
+          </ActionRow>
+        </div>
+        <Accordeon heading={t('settings')}>
+          <div className="space-y-5">
+            <div className="space-y-3">
+              <SelectField
+                label={t('paperFormat')}
+                value={`${settings.pageWidthMm}x${settings.pageHeightMm}`}
+                onChange={(v) => setPageFormat(v === `${A4.w}x${A4.h}` ? 'A4' : 'Letter')}
+                options={[
+                  { value: `${A4.w}x${A4.h}`, label: 'A4 (210×297 mm)' },
+                  { value: `${Letter.w}x${Letter.h}`, label: 'Letter (8.5×11 in)' },
+                ]}
+              />
+            </div>
+            <div className="space-y-3">
+              <h3 className="font-medium text-gray-200">{t('sheet')}</h3>
+              <div className="grid grid-cols-2 gap-x-10 gap-y-3">
+                <NumberField label={t('columns')} value={settings.columns} min={1} max={Math.floor((settings.pageWidthMm - settings.marginRightMm - settings.marginLeftMm + settings.gapMm) / (settings.cardWidthMm + settings.gapMm))} onChange={(v) => setSettings({ ...settings, columns: v })} />
+                <NumberField label={t('rows')} value={settings.rows} min={1} max={Math.floor((settings.pageHeightMm - settings.marginBottomMm - settings.marginTopMm + settings.gapMm) / (settings.cardHeightMm + settings.gapMm))} onChange={(v) => setSettings({ ...settings, rows: v })} />
+                <NumberField label={t('gap')} value={settings.gapMm} min={0} onChange={(v) => setSettings({ ...settings, gapMm: v })} suffix={t('mm')} />
+              </div>
+              <h4 className="font-medium text-gray-150">{t('margin')}</h4>
+              <div className="grid grid-cols-2 gap-x-10 gap-y-3">
+                <NumberField label={t('top')} value={settings.marginTopMm} min={0} onChange={(v) => setSettings({ ...settings, marginTopMm: v })} suffix={t('mm')} />
+                <NumberField label={t('right')} value={settings.marginRightMm} min={0} onChange={(v) => setSettings({ ...settings, marginRightMm: v })} suffix={t('mm')} />
+                <NumberField label={t('bottom')} value={settings.marginBottomMm} min={0} onChange={(v) => setSettings({ ...settings, marginBottomMm: v })} suffix={t('mm')} />
+                <NumberField label={t('left')} value={settings.marginLeftMm} min={0} onChange={(v) => setSettings({ ...settings, marginLeftMm: v })} suffix={t('mm')} />
+              </div>
+            </div>
 
-          <div className="space-y-3">
-            <h3 className="font-medium text-gray-200">{t('sheet')}</h3>
-            <div className="grid grid-cols-2 gap-x-10 gap-y-3">
-              <NumberField label={t('columns')} value={settings.columns} min={1} onChange={(v) => setSettings({ ...settings, columns: v })} />
-              <NumberField label={t('rows')} value={settings.rows} min={1} onChange={(v) => setSettings({ ...settings, rows: v })} />
-              <NumberField label={t('gap')} value={settings.gapMm} min={0} onChange={(v) => setSettings({ ...settings, gapMm: v })} suffix={t('mm')} />
-            </div>
-            <h4 className="font-medium text-gray-150">{t('margin')}</h4>
-          <div className="grid grid-cols-2 gap-x-10 gap-y-3">
-              <NumberField label={t('top')} value={settings.marginTopMm} min={0} onChange={(v) => setSettings({ ...settings, marginTopMm: v })} suffix={t('mm')} />
-              <NumberField label={t('right')} value={settings.marginRightMm} min={0} onChange={(v) => setSettings({ ...settings, marginRightMm: v })} suffix={t('mm')} />
-              <NumberField label={t('bottom')} value={settings.marginBottomMm} min={0} onChange={(v) => setSettings({ ...settings, marginBottomMm: v })} suffix={t('mm')} />
-              <NumberField label={t('left')} value={settings.marginLeftMm} min={0} onChange={(v) => setSettings({ ...settings, marginLeftMm: v })} suffix={t('mm')} />
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="font-medium text-gray-200">{t('card')}</h3>
-            <div className="grid grid-cols-2 gap-x-10 gap-y-3">
-              <NumberField label={t('width')} value={settings.cardWidthMm} min={10} onChange={(v) => setSettings({ ...settings, cardWidthMm: v })} suffix={t('mm')} />
-              <NumberField label={t('height')} value={settings.cardHeightMm} min={10} onChange={(v) => setSettings({ ...settings, cardHeightMm: v })} suffix={t('mm')} />
-            </div>
-            <SelectField
+            <div className="space-y-3">
+              <h3 className="font-medium text-gray-200">{t('card')}</h3>
+              <div className="grid grid-cols-2 gap-x-10 gap-y-3">
+                <NumberField label={t('width')} value={settings.cardWidthMm} min={1} max={settings.pageWidthMm - settings.marginLeftMm - settings.marginRightMm} onChange={(v) => setSettings({ ...settings, cardWidthMm: v })} suffix={t('mm')} />
+                <NumberField label={t('height')} value={settings.cardHeightMm} min={1} max={settings.pageHeightMm - settings.marginTopMm - settings.marginBottomMm} onChange={(v) => setSettings({ ...settings, cardHeightMm: v })} suffix={t('mm')} />
+              </div>
+              <SelectField
                 label={t('textPosition')}
-            value={settings.textPosition}
-            onChange={(v) => setSettings({ ...settings, textPosition: v as SheetSettings['textPosition'] })}
-            options={[
+                value={settings.textPosition}
+                onChange={(v) => setSettings({ ...settings, textPosition: v as SheetSettings['textPosition'] })}
+                options={[
                   { value: 'above', label: t('aboveImage') },
                   { value: 'below', label: t('belowImage') },
-            ]}
-          />
-            <FontPicker label={t('fontFamily')} value={settings.fontFamily} onChange={(v) => setSettings({ ...settings, fontFamily: v })} placeholder={t('searchFonts')} />
-          <div className="grid grid-cols-2 gap-x-10 gap-y-3">
-              <NumberField label={t('fontSize')} value={settings.fontSizePt} min={6} onChange={(v) => setSettings({ ...settings, fontSizePt: v })} suffix="pt" />
-              <ToggleField label={t('bold')} checked={settings.bold} onChange={(v) => setSettings({ ...settings, bold: v })} />
+                ]}
+              />
+              <FontPicker label={t('fontFamily')} value={settings.fontFamily} onChange={(v) => setSettings({ ...settings, fontFamily: v })} placeholder={t('searchFonts')} />
+              <div className="grid grid-cols-2 gap-x-10 gap-y-3">
+                <NumberField label={t('fontSize')} value={settings.fontSizePt} min={6} onChange={(v) => setSettings({ ...settings, fontSizePt: v })} suffix="pt" />
+                <ToggleField label={t('bold')} checked={settings.bold} onChange={(v) => setSettings({ ...settings, bold: v })} />
+              </div>
             </div>
           </div>
-        </div>
-          
-        <ActionRow>
-          <Button variant="secondary" onClick={saveDefaults}>{t('saveDefaults')}</Button>
-          <Button variant="secondary" onClick={applyDefaults}>{t('applyDefaults')}</Button>
-        </ActionRow>
 
-        <h2 className="mt-6 text-lg font-semibold">{t('addCards')}</h2>
-        <div className="space-y-3">
-          <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={onFileChange} disabled={addingFiles}
-                 className="w-full rounded bg-gray-800 px-2 py-2 text-gray-100 disabled:opacity-50 text-sm" />
-          {addingFiles && (
-            <div className="text-sm text-gray-400">
-              {t('uploading')} {addingProgress !== null ? Math.round(addingProgress) + '%' : ''}
-            </div>
-          )}
-          <UrlAddForm onAdd={addCardFromUrl} t={t} />
-        </div>
+          <ActionRow>
+            <Button variant="secondary" onClick={saveDefaults}>{t('saveDefaults')}</Button>
+            <Button variant="secondary" onClick={applyDefaults}>{t('applyDefaults')}</Button>
+          </ActionRow>
+        </Accordeon>
+        <Accordeon heading={t('addCards')}>
+          <div className="space-y-3">
+            <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={onFileChange} disabled={addingFiles}
+              className="w-full rounded bg-gray-800 px-2 py-2 text-gray-100 disabled:opacity-50 text-sm" />
+            {addingFiles && (
+              <div className="text-sm text-gray-400">
+                {t('uploading')} {addingProgress !== null ? Math.round(addingProgress) + '%' : ''}
+              </div>
+            )}
+            <UrlAddForm onAdd={addCardFromUrl} t={t} />
+          </div>
 
-        <h2 className="mt-6 text-lg font-semibold">{t('yourAssets')}</h2>
-        <AssetBrowser onPick={(a) => addCardFromUrl(a.url, sanitizeLabel(a.name))} refreshToken={assetsRefresh} t={t} />
-        <div className="mt-2">
-          <UploadToLibrary onUpload={uploadToLibrary} uploading={uploading} t={t} />
-        </div>
-
+          <h2 className="mt-6 text-lg font-semibold">{t('yourAssets')}</h2>
+          <AssetBrowser onPick={(a) => addCardFromUrl(a.url, sanitizeLabel(a.name))} refreshToken={assetsRefresh} t={t} />
+          <div className="mt-2">
+            <UploadToLibrary onUpload={uploadToLibrary} uploading={uploading} t={t} />
+          </div>
+        </Accordeon>
         <h2 className="mt-6 text-lg font-semibold">{t('export')}</h2>
         <ActionRow>
           <Button onClick={exportPdf}>{t('downloadPdf')}</Button>
           <Button variant="secondary" onClick={() => window.print()}>{t('print')}</Button>
         </ActionRow>
 
-        <h2 className="mt-6 text-lg font-semibold">{t('saveLoad')}</h2>
-        <ActionRow>
-          <Button variant="secondary" onClick={async () => { await saveSheet(t, (settings as any).title || t('untitled')); await refreshSheets(); }}>{t('saveSheet')}</Button>
-          <Button variant="secondary" onClick={async () => { (window as any).__CURRENT_SHEET_ID__ = undefined; await saveSheet(t, (settings as any).title || t('untitled')); await refreshSheets(); }}>{t('saveAsNew')}</Button>
-        </ActionRow>
-        <ActionRow>
-          <Button onClick={newSheet}>{t('newSheet')}</Button>
-        </ActionRow>
-
         <h2 className="mt-6 text-lg font-semibold">{t('yourSheets')}</h2>
-          <div className="space-y-2">
-            {sheets.length === 0 && (
-              <div className="text-sm text-gray-400">{t('noSavedSheets')}</div>
-            )}
-            {sheets.map((s) => (
-              <div key={s.id} className="flex items-center justify-between rounded bg-gray-800 px-2 py-2 text-sm">
-                <div className="truncate pr-2">
-                  <div className="font-medium">{s.title || t('untitled')}</div>
-                  <div className="text-xs text-gray-400">{s.cards?.length || 0} {t('cards')}</div>
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="secondary" onClick={() => {
-                    (window as any).__CURRENT_SHEET_ID__ = s.id;
-                    loadSheet(s.id);
-                  }}>{t('load')}</Button>
-                  <Button variant="secondary" onClick={async () => {
-                    if (confirm(t('deleteSheetConfirm'))) {
-                      const userId = localStorage.getItem('userId');
-                      if (userId) {
-                        await fetch(`/api/sheets/${s.id}`, { method: 'DELETE', headers: { 'x-user-id': userId } });
-                        await refreshSheets();
-                      }
-                    }
-                  }}>{t('delete')}</Button>
-                </div>
+        <div className="space-y-2">
+          {sheets.length === 0 && (
+            <div className="text-sm text-gray-400">{t('noSavedSheets')}</div>
+          )}
+          {sheets.map((s) => (
+            <div key={s.id} className="flex items-center justify-between rounded bg-gray-800 px-2 py-2 text-sm">
+              <div className="truncate pr-2">
+                <div className="font-medium">{s.title || t('untitled')}</div>
+                <div className="text-xs text-gray-400">{s.cards?.length || 0} {t('cards')}</div>
               </div>
-            ))}
-          </div>
+              <div className="flex gap-1">
+                <Button variant="secondary" onClick={() => {
+                  (window as any).__CURRENT_SHEET_ID__ = s.id;
+                  loadSheet(s.id);
+                }}>{t('load')}</Button>
+                <Button variant="secondary" onClick={async () => {
+                  if (confirm(t('deleteSheetConfirm'))) {
+                    const userId = localStorage.getItem('userId');
+                    if (userId) {
+                      await fetch(`/api/sheets/${s.id}`, { method: 'DELETE', headers: { 'x-user-id': userId } });
+                      await refreshSheets();
+                    }
+                  }
+                }}>{t('delete')}</Button>
+              </div>
+            </div>
+          ))}
+        </div>
       </aside>
 
       <section className="space-y-4 order-1 lg:order-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-x-2">
           <h2 className="text-lg font-semibold">{t('sheetPreview')}</h2>
+          <div className="flex gap-x-1">
+            <Button onClick={exportPdf} className="text-sm w-1/2 py-1 whitespace-pre">{t('downloadPdf')}</Button>
+            <Button variant="secondary" onClick={() => window.print()} className="text-sm w-1/2 py-1">{t('print')}</Button>
+          </div>
           <div className="text-sm text-gray-400">{cards.length} {t('cards')} • {totalCells} {t('cells')}</div>
         </div>
         <div className="overflow-auto rounded bg-gray-200 p-4">
-          <Canvas cards={cards} settings={settings} t={t}/>
+          <Canvas cards={cards} settings={settings} t={t} />
         </div>
 
         <h3 className="mt-4 text-base font-semibold">{t('cardsHeader')}</h3>
@@ -495,11 +458,11 @@ export default function EditorPage() {
                   ) : null}
                 </div>
                 <div className="flex flex-col gap-1">
-                <input
-                  className="rounded bg-gray-800 px-2 py-1 text-sm"
-                  value={c.label}
-                  onChange={(e) => updateCardLabel(c.id, e.target.value)}
-                />
+                  <input
+                    className="rounded bg-gray-800 px-2 py-1 text-sm"
+                    value={c.label}
+                    onChange={(e) => updateCardLabel(c.id, e.target.value)}
+                  />
                   <div className="flex gap-2 items-center">
                     <select
                       className="rounded bg-gray-800 px-2 py-1 text-xs"
@@ -512,25 +475,25 @@ export default function EditorPage() {
                         </option>
                       ))}
                     </select>
-                <input
-                  type="number"
-                  className="w-20 rounded bg-gray-800 px-2 py-1 text-xs"
+                    <input
+                      type="number"
+                      className="w-20 rounded bg-gray-800 px-2 py-1 text-xs"
                       placeholder={t('size')}
                       value={c.fontSizePt ?? settings.fontSizePt}
                       onChange={(e) => updateCardFont(c.id, { fontSizePt: Number(e.target.value || settings.fontSizePt) })}
-                />
-                <label className="flex items-center gap-1 text-xs text-gray-300">
-                  <input
-                    type="checkbox"
+                    />
+                    <label className="flex items-center gap-1 text-xs text-gray-300">
+                      <input
+                        type="checkbox"
                         checked={c.bold ?? settings.bold}
-                    onChange={(e) => updateCardFont(c.id, { bold: e.target.checked })}
-                  />
+                        onChange={(e) => updateCardFont(c.id, { bold: e.target.checked })}
+                      />
                       {t('bold')}
-                </label>
+                    </label>
                   </div>
+                </div>
               </div>
-              </div>
-                <Button variant="secondary" onClick={() => removeCard(c.id)}>{t('remove')}</Button>
+              <Button variant="secondary" onClick={() => removeCard(c.id)}>{t('remove')}</Button>
             </div>
           ))}
         </div>
@@ -550,8 +513,8 @@ async function saveSheet(t: (key: keyof typeof import('@/lib/i18n').translations
   const currentId = (window as any).__CURRENT_SHEET_ID__;
   const url = currentId ? `/api/sheets/${currentId}` : '/api/sheets';
   const method = currentId ? 'PUT' : 'POST';
-  const res = await fetch(url, { 
-    method, 
+  const res = await fetch(url, {
+    method,
     headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
     body: JSON.stringify(sheet)
   });
@@ -586,8 +549,8 @@ async function loadSheet(id: string) {
   const sheets = Array.isArray(data.sheets) ? data.sheets : [];
   console.log('sheets', sheets);
   if (sheets.length === 0) return;
-  const sheet = sheets.find((s: {id: string}) => s.id == id);
-  if(!sheet) return;
+  const sheet = sheets.find((s: { id: string }) => s.id == id);
+  if (!sheet) return;
   const state = (window as any).PECSEditorState;
   state?.loadFromSheet?.(sheet);
 }

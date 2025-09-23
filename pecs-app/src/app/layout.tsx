@@ -26,7 +26,7 @@ export default function RootLayout({
             <SessionSync />
             <div className="min-h-screen bg-gray-950 text-gray-100">
               <Header />
-              <main className="mx-auto max-w-7xl p-4">{children}</main>
+              <main className="mx-auto max-w-7xl p-4 pb-2">{children}</main>
             </div>
           </LocaleProvider>
         </SessionProvider>

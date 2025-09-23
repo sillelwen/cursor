@@ -2,16 +2,22 @@
 
 import { ChangeEvent, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { twMerge } from 'tailwind-merge';
 
-export function NumberField({ label, value, onChange, min = 0, step = 1, suffix }: {
-  label: string; value: number; onChange: (v: number) => void; min?: number; step?: number; suffix?: string;
+
+function inRange(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function NumberField({ label, value, onChange, min = 0, max = 100, step = 1, suffix }: {
+  label: string; value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; suffix?: string;
 }) {
-  const handle = (e: ChangeEvent<HTMLInputElement>) => onChange(parseFloat(e.target.value));
+  const handle = (e: ChangeEvent<HTMLInputElement>) => onChange(inRange(parseFloat(e.target.value??0), min, max));
   return (
     <label className="flex items-center justify-between gap-2 text-sm">
       <span className="text-gray-300">{label}</span>
       <div className="flex items-center gap-1">
-        <input type="number" min={min} step={step} value={value} onChange={handle} className="w-14 rounded bg-gray-800 px-2 py-1 text-gray-100" />
+        <input type="number" min={min} max={max} step={step} value={value} onChange={handle} className="w-14 rounded bg-gray-800 px-2 py-1 text-gray-100" />
         {suffix && <span className="text-gray-400">{suffix}</span>}
       </div>
     </label>
@@ -32,7 +38,9 @@ export function SelectField({ label, value, onChange, options }: {
 }) {
   return (
     <label className="flex items-center justify-between gap-2 text-sm">
-      <span className="text-gray-300">{label}</span>
+      {label && 
+        <span className="text-gray-300">{label}</span>
+      }
       <select value={value} onChange={(e) => onChange(e.target.value)} className="w-48 rounded bg-gray-800 px-2 py-1 text-gray-100">
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -42,11 +50,25 @@ export function SelectField({ label, value, onChange, options }: {
   );
 }
 
-export function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+export function ToggleField({ label, checked, onChange, className='' }: { label: string; checked: boolean; onChange: (v: boolean) => void; className?: string }) {
   return (
-    <label className="flex items-center justify-between gap-2 text-sm">
-      <span className="text-gray-300">{label}</span>
+    <label className={twMerge('toggle', className)}>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span className="slider round"></span>
+      <span className="text-gray-300 toggle-label">{label}</span>
+    </label>
+  );
+}
+
+export function ColorField({ label, value, onChange }: { label: string; value: string|null; onChange: (v: string|null) => void }) {
+  return (
+    <label className="flex items-center justify-start gap-2 color">
+      <span className="text-gray-300">{label}</span>
+      <span className="flex items-center justify-start">
+        <input type="color" value={value??''} onChange={(e) => onChange(e.target.value)} className="w-24 justify-self-start"/>
+        <div className={twMerge('preview', value?'color-bg':'transparent-bg')} style={{backgroundColor: value??'transparent'}}></div>
+      </span>
+      <button onClick={()=>onChange(null)}>&#8709;</button>
     </label>
   );
 }
@@ -69,6 +91,10 @@ export const COMMON_FONTS = [
   'Tahoma, Geneva, sans-serif',
   'Trebuchet MS, Helvetica, sans-serif',
   'Comic Sans MS, cursive, sans-serif',
+  '"David Libre", serif',
+  '"Open Sans", sans-serif',
+  '"Heebo", sans-serif',
+  '"Rubik", sans-serif'
 ];
 
 export function FontPicker({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void, placeholder: string }) {
