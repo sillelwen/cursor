@@ -1,0 +1,440 @@
+@import url('https://fonts.googleapis.com/css2?family=David+Libre:wght@400;500;700&family=Heebo:wght@100..900&family=Open+Sans:ital,wdth,wght@0,75..100,300..800;1,75..100,300..800&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0b0c10;
+  --foreground: #1f2833;
+  --text: #e5e7eb;
+}
+
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  color: var(--text);
+  background: var(--background);
+}
+
+/* Print only the sheet area */
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+  /* Hide everything by default */
+  body * {
+    visibility: hidden !important;
+  }
+  /* Show only the print area */
+  #print-area, #print-area * {
+    visibility: visible !important;
+  }
+  #print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+  /* Ensure images render in print */
+  .screen-img { display: none !important; }
+  .print-img { display: block !important; }
+  @page {
+    margin: 0;
+    overflow: hidden;
+  }
+}
+
+/* Accordeon */
+.accordeonTrigger::after {
+  content: "";
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  float: inline-end;
+  background-color: currentColor;
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat center / contain;
+  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat center / contain;
+}
+.accordeonTrigger.closed::after {
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat center / contain;
+  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>') no-repeat center / contain;
+}
+
+/* Toggle switch */
+.toggle {
+  position: relative;
+  display: inline-grid;
+  grid-template-areas: 'toggle label';
+  grid-template-columns: 4ex max-content;
+  grid-template-rows: min-content;
+  column-gap: 1ex;
+  align-content: center;
+}
+.toggle.grid, .toggle.block {
+  display: grid;
+}
+/* Hide default HTML checkbox */
+.toggle input[type="checkbox"] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  grid-area: toggle;
+}
+
+/* The slider */
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: .4ex;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+  height: 2ex;
+  grid-area: toggle;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 1.5ex;
+  width: 1.5ex;
+  inset-inline-start: 0.5ex;
+  bottom: 0.28ex;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.toggle input[type="checkbox"]:checked + .slider {
+  background-color: #2196F3;
+}
+
+.toggle input[type="checkbox"]:focus + .slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+.toggle input[type="checkbox"]:checked + .slider:before {
+  -webkit-transform: translateX(1.5ex);
+  -ms-transform: translateX(1.5ex);
+  transform: translateX(1.5ex);
+}
+[dir="rtl"] .toggle input[type="checkbox"]:checked + .slider:before {
+  -webkit-transform: translateX(-1.5ex);
+  -ms-transform: translateX(-1.5ex);
+  transform: translateX(-1.5ex);
+}
+
+.toggle .toggle-label {
+  grid-area: label;
+}
+
+/* Rounded sliders */
+.slider.round {
+  border-radius: 2ex;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+/* Color picker */
+.color input[type="color"] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.color .preview {
+  display: inline-block;
+  width: 2rem;
+  height: 1.5rem;
+  border-radius: 15%;
+  border: 1px solid var(--text);
+}
+
+.transparent-bg {
+  --tile: 12px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='16' height='16' fill='%23ffffff'/><rect width='8' height='8' fill='%23dcdcdc'/><rect x='8' y='8' width='8' height='8' fill='%23dcdcdc'/></svg>");
+  background-repeat: repeat;
+  background-size: var(--tile) var(--tile);
+}
+
+.tile-grid-container {
+  display: grid;
+  grid-template-columns: repeat(4, 25%);
+  max-width: 100%;
+  gap: 0.3rem;
+}
+.personalAssetsGrid .tile-grid-item>button {
+  justify-items: center;
+  width: 100%;
+  height: -webkit-fill-available;
+  display: grid;
+  grid-template-rows: auto min-content;
+}
+.personalAssetsGrid .tile-grid-item>button>img {
+  object-fit: scale-down;
+  align-self: center;
+}
+.personalAssetsGrid .tile-grid-item>button>div {
+  object-fit: scale-down;
+}
+.tile-grid-container > .tile-grid-item > * {
+  display: block;
+  width: 100%;
+  object-fit: contain;
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.2rem;
+  button {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  button:disabled {
+    background-color: rgb(37, 99, 235);
+    font-weight: 800;
+    border-radius: 50%;
+  }
+}
+
+/* RTL Layout Support */
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+[dir="rtl"] .space-x-2 > * + * {
+  margin-inline-start: 0.5rem;
+  margin-inline-end: 0;
+}
+
+[dir="rtl"] .space-x-3 > * + * {
+  margin-inline-start: 0.75rem;
+  margin-inline-end: 0;
+}
+
+[dir="rtl"] .space-x-4 > * + * {
+  margin-inline-start: 1rem;
+  margin-inline-end: 0;
+}
+
+[dir="rtl"] .space-x-6 > * + * {
+  margin-inline-start: 1.5rem;
+  margin-inline-end: 0;
+}
+
+[dir="rtl"] .gap-1 {
+  gap: 0.25rem;
+}
+
+[dir="rtl"] .gap-2 {
+  gap: 0.5rem;
+}
+
+[dir="rtl"] .gap-3 {
+  gap: 0.75rem;
+}
+
+[dir="rtl"] .gap-4 {
+  gap: 1rem;
+}
+
+[dir="rtl"] .gap-6 {
+  gap: 1.5rem;
+}
+
+/* RTL padding using logical properties */
+[dir="rtl"] .pr-2 {
+  padding-inline-end: 0.5rem;
+  padding-inline-start: 0;
+}
+
+[dir="rtl"] .pl-2 {
+  padding-inline-start: 0.5rem;
+  padding-inline-end: 0;
+}
+
+[dir="rtl"] .pr-3 {
+  padding-inline-end: 0.75rem;
+  padding-inline-start: 0;
+}
+
+[dir="rtl"] .pl-3 {
+  padding-inline-start: 0.75rem;
+  padding-inline-end: 0;
+}
+
+[dir="rtl"] .pr-4 {
+  padding-inline-end: 1rem;
+  padding-inline-start: 0;
+}
+
+[dir="rtl"] .pl-4 {
+  padding-inline-start: 1rem;
+  padding-inline-end: 0;
+}
+
+/* RTL margins using logical properties */
+[dir="rtl"] .mr-1 {
+  margin-inline-end: 0.25rem;
+  margin-inline-start: 0;
+}
+
+[dir="rtl"] .ml-1 {
+  margin-inline-start: 0.25rem;
+  margin-inline-end: 0;
+}
+
+[dir="rtl"] .mr-2 {
+  margin-inline-end: 0.5rem;
+  margin-inline-start: 0;
+}
+
+[dir="rtl"] .ml-2 {
+  margin-inline-start: 0.5rem;
+  margin-inline-end: 0;
+}
+
+[dir="rtl"] .mr-3 {
+  margin-inline-end: 0.75rem;
+  margin-inline-start: 0;
+}
+
+[dir="rtl"] .ml-3 {
+  margin-inline-start: 0.75rem;
+  margin-inline-end: 0;
+}
+
+[dir="rtl"] .mr-4 {
+  margin-inline-end: 1rem;
+  margin-inline-start: 0;
+}
+
+[dir="rtl"] .ml-4 {
+  margin-inline-start: 1rem;
+  margin-inline-end: 0;
+}
+
+[dir="rtl"] .mr-6 {
+  margin-inline-end: 1.5rem;
+  margin-inline-start: 0;
+}
+
+[dir="rtl"] .ml-6 {
+  margin-inline-start: 1.5rem;
+  margin-inline-end: 0;
+}
+
+/* RTL Layout - True RTL implementation */
+html[dir="rtl"] {
+  direction: rtl;
+}
+
+html[dir="rtl"] body {
+  direction: rtl;
+}
+
+
+
+
+
+
+
+/* RTL text alignment - these are still needed because Tailwind classes are explicit */
+[dir="rtl"] .text-left {
+  text-align: right;
+}
+
+[dir="rtl"] .text-right {
+  text-align: left;
+}
+
+/* RTL border properties - only override what needs logical properties */
+[dir="rtl"] .border-l {
+  border-inline-start-width: 1px;
+  border-inline-end-width: 0;
+}
+
+[dir="rtl"] .border-r {
+  border-inline-end-width: 1px;
+  border-inline-start-width: 0;
+}
+
+[dir="rtl"] .max-w-7xl {
+  max-width: 80rem;
+}
+
+[dir="rtl"] .mx-auto {
+  margin-inline-start: auto;
+  margin-inline-end: auto;
+}
+
+
+
+[dir="rtl"] .inline-flex {
+  display: inline-flex;
+}
+
+[dir="rtl"] .flex {
+  display: flex;
+}
+
+[dir="rtl"] .grid {
+  display: grid;
+}
+
+[dir="rtl"] .cursor-pointer {
+  cursor: pointer;
+}
+
+[dir="rtl"] .overflow-auto {
+  overflow: auto;
+}
+
+[dir="rtl"] .overflow-hidden {
+  overflow: hidden;
+}
+
+[dir="rtl"] .object-cover {
+  object-fit: cover;
+}
+
+[dir="rtl"] .object-contain {
+  object-fit: contain;
+}
+
+[dir="rtl"] .disabled\:opacity-50:disabled {
+  opacity: 0.5;
+}
+
+[dir="rtl"] .hover\:bg-blue-700:hover {
+  background-color: rgb(29 78 216);
+}
+
+[dir="rtl"] .hover\:bg-red-700:hover {
+  background-color: rgb(185 28 28);
+}
+
+[dir="rtl"] .ring-2 {
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+}
+
+[dir="rtl"] .ring-blue-500 {
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(59 130 246 / var(--tw-ring-opacity));
+}
+
+[dir="rtl"] .antialiased {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Card" ADD COLUMN "bold" BOOLEAN;
+ALTER TABLE "Card" ADD COLUMN "fontFamily" TEXT;
+ALTER TABLE "Card" ADD COLUMN "fontSizePt" INTEGER;
