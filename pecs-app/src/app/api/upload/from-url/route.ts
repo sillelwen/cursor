@@ -65,10 +65,12 @@ export async function POST(req: NextRequest) {
       return path.extname(new URL(url).pathname) || '.png';
     })();
 
-    // Ad bgColor to PNG
+    // Add bgColor to PNG
     if (guessedExt === '.png' && backgroundColor) {
       try {
-        bytes = await addBackgroundToPng(bytes, backgroundColor);
+        const buffer = Buffer.from(bytes);
+        const processedBuffer = await addBackgroundToPng(buffer, backgroundColor);
+        bytes = Buffer.from(processedBuffer);
       } catch (err) {
         console.error('Error adding background:', err);
       }

@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+
+export const dynamic = 'force-dynamic';
 import { Canvas, CardData, SheetSettings } from '@/components/editor/Canvas';
 import { NumberField, SelectField, TextField, ToggleField, ActionRow, Button, FontPicker, COMMON_FONTS } from '@/components/editor/Controls';
 import { AssetBrowser } from '@/components/editor/AssetBrowser';
 import { v4 as uuidv4 } from 'uuid';
 import { getTranslation } from '@/lib/i18n';
 import { useLocale } from '@/contexts/LocaleContext';
-import html2pdf from 'html2pdf.js';
+import { useSession } from 'next-auth/react';
+// import html2pdf from 'html2pdf.js'; // Will be imported dynamically
 import { Accordeon } from '@/components/ui/Accordeon';
 
 const A4 = { w: 210, h: 297 };
@@ -49,15 +52,18 @@ export default function EditorPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { locale } = useLocale();
+  const { data: session, status } = useSession();
 
   const totalCells = useMemo(() => settings.columns * settings.rows, [settings]);
 
   const t = (key: keyof typeof import('@/lib/i18n').translations.en) => getTranslation(locale || 'en', key);
 
-  // Load sheets and defaults on mount
+  // Load sheets and defaults when session is ready
   useEffect(() => {
-    refreshSheets();
-  }, []);
+    if (status === 'authenticated' && session?.user?.id) {
+      refreshSheets();
+    }
+  }, [status, session?.user?.id]);
 
   const sanitizeLabel = (name: string) => name.replace(/\.[^.]+$/, '').replace(/_/g, ' ').trim();
 
@@ -72,17 +78,17 @@ export default function EditorPage() {
     const tempId = uuidv4();
     setCards((prev) => [...prev, { id: tempId, label: sanitizeLabel(file.name), objectUrl, uploadingAsset: true }]);
     try {
-      const userId = localStorage.getItem('userId');
+      const userId = session?.user?.id;
       if (!userId) return;
-      const form = new FormData();
-      form.append('file', file);
-      form.append('name', file.name);
+    const form = new FormData();
+    form.append('file', file);
+    form.append('name', file.name);
       const res = await fetch('/api/upload', { method: 'POST', headers: { 'x-user-id': userId }, body: form });
-      if (res.ok) {
-        const data = await res.json();
+    if (res.ok) {
+      const data = await res.json();
         const asset = data.asset;
         setCards((prev) => prev.map((c) => c.id === tempId ? { ...c, imageUrl: asset.url, assetId: asset.id, uploadingAsset: false } : c));
-      } else {
+    } else {
         setCards((prev) => prev.map((c) => c.id === tempId ? { ...c, uploadingAsset: false } : c));
       }
     } catch {
@@ -110,14 +116,14 @@ export default function EditorPage() {
     form.append('name', file.name);
     setUploading(true);
     try {
-      const userId = localStorage.getItem('userId');
+      const userId = session?.user?.id;
       if (!userId) {
         alert(t('pleaseSignIn'));
         return;
       }
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: form,
+      const response = await fetch('/api/upload', { 
+        method: 'POST', 
+        body: form, 
         headers: { 'x-user-id': userId },
       });
       if (response.ok) {
@@ -140,7 +146,7 @@ export default function EditorPage() {
     setCards((prev) => [...prev, { id: tempId, label, imageUrl: url, uploadingAsset: true }]);
     (async () => {
       try {
-        const userId = localStorage.getItem('userId');
+        const userId = session?.user?.id;
         if (!userId) return;
         const res = await fetch('/api/upload/from-url', {
           method: 'POST',
@@ -172,6 +178,10 @@ export default function EditorPage() {
   const exportPdf = async () => {
     const element = document.getElementById('print-area');
     if (!element) return;
+
+    // Dynamically import html2pdf to avoid SSR issues
+    const html2pdf = (await import('html2pdf.js')).default;
+    
     var opt = {
       margin: 0,
       filename: `${(settings as any).title || t('untitled')}.pdf`,
@@ -201,7 +211,7 @@ export default function EditorPage() {
   };
 
   async function saveDefaults() {
-    const userId = localStorage.getItem('userId');
+    const userId = session?.user?.id;
     if (!userId) return alert(t('pleaseSignIn'));
     const res = await fetch('/api/sheets', {
       method: 'PUT',
@@ -216,7 +226,7 @@ export default function EditorPage() {
   }
 
   async function applyDefaults() {
-    const userId = localStorage.getItem('userId');
+    const userId = session?.user?.id;
     if (!userId) return alert(t('pleaseSignIn'));
     const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
     if (!res.ok) return alert(t('failedToLoadDefaults'));
@@ -230,12 +240,12 @@ export default function EditorPage() {
   }
 
   async function refreshSheets() {
-    const userId = localStorage.getItem('userId');
+    const userId = session?.user?.id;
     if (userId) {
       try {
         const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
-        if (res.ok) {
-          const data = await res.json();
+    if (res.ok) {
+      const data = await res.json();
           console.log('Loaded sheets:', data);
           setSheets(Array.isArray(data.sheets) ? data.sheets : []);
           if (data.defaultSettings) {
@@ -249,7 +259,7 @@ export default function EditorPage() {
         console.error('Error loading sheets:', error);
       }
     } else {
-      console.log('No userId found in localStorage');
+      console.log('No userId found in session');
     }
   }
 
@@ -261,7 +271,7 @@ export default function EditorPage() {
     }
     const base = cachedDefaults ? { ...defaultSettings(), ...cachedDefaults } : defaultSettings();
     setSettings(base);
-    setCards([]);
+        setCards([]);
     setCurrentSheetId(undefined);
     (window as any).__CURRENT_SHEET_ID__ = undefined;
     setTimeout(markSavedSnapshot, 0);
@@ -312,19 +322,19 @@ export default function EditorPage() {
           <ActionRow>
             <Button className="text-sm py-1" onClick={newSheet}>{t('newSheet')}</Button>
           </ActionRow>
-        </div>
+          </div>
         <Accordeon heading={t('settings')}>
           <div className="space-y-5">
             <div className="space-y-3">
-              <SelectField
+          <SelectField
                 label={t('paperFormat')}
-                value={`${settings.pageWidthMm}x${settings.pageHeightMm}`}
-                onChange={(v) => setPageFormat(v === `${A4.w}x${A4.h}` ? 'A4' : 'Letter')}
-                options={[
-                  { value: `${A4.w}x${A4.h}`, label: 'A4 (210×297 mm)' },
-                  { value: `${Letter.w}x${Letter.h}`, label: 'Letter (8.5×11 in)' },
-                ]}
-              />
+            value={`${settings.pageWidthMm}x${settings.pageHeightMm}`}
+            onChange={(v) => setPageFormat(v === `${A4.w}x${A4.h}` ? 'A4' : 'Letter')}
+            options={[
+              { value: `${A4.w}x${A4.h}`, label: 'A4 (210×297 mm)' },
+              { value: `${Letter.w}x${Letter.h}`, label: 'Letter (8.5×11 in)' },
+            ]}
+          />
             </div>
             <div className="space-y-3">
               <h3 className="font-medium text-gray-200">{t('sheet')}</h3>
@@ -347,12 +357,12 @@ export default function EditorPage() {
               <div className="grid grid-cols-2 gap-x-10 gap-y-3">
                 <NumberField label={t('width')} value={settings.cardWidthMm} min={1} max={settings.pageWidthMm - settings.marginLeftMm - settings.marginRightMm} onChange={(v) => setSettings({ ...settings, cardWidthMm: v })} suffix={t('mm')} />
                 <NumberField label={t('height')} value={settings.cardHeightMm} min={1} max={settings.pageHeightMm - settings.marginTopMm - settings.marginBottomMm} onChange={(v) => setSettings({ ...settings, cardHeightMm: v })} suffix={t('mm')} />
-              </div>
-              <SelectField
+          </div>
+          <SelectField
                 label={t('textPosition')}
-                value={settings.textPosition}
-                onChange={(v) => setSettings({ ...settings, textPosition: v as SheetSettings['textPosition'] })}
-                options={[
+            value={settings.textPosition}
+            onChange={(v) => setSettings({ ...settings, textPosition: v as SheetSettings['textPosition'] })}
+            options={[
                   { value: 'above', label: t('aboveImage') },
                   { value: 'below', label: t('belowImage') },
                 ]}
@@ -362,8 +372,8 @@ export default function EditorPage() {
                 <NumberField label={t('fontSize')} value={settings.fontSizePt} min={6} onChange={(v) => setSettings({ ...settings, fontSizePt: v })} suffix="pt" />
                 <ToggleField label={t('bold')} checked={settings.bold} onChange={(v) => setSettings({ ...settings, bold: v })} />
               </div>
-            </div>
           </div>
+        </div>
 
           <ActionRow>
             <Button variant="secondary" onClick={saveDefaults}>{t('saveDefaults')}</Button>
@@ -371,7 +381,7 @@ export default function EditorPage() {
           </ActionRow>
         </Accordeon>
         <Accordeon heading={t('addCards')}>
-          <div className="space-y-3">
+        <div className="space-y-3">
             <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={onFileChange} disabled={addingFiles}
               className="w-full rounded bg-gray-800 px-2 py-2 text-gray-100 disabled:opacity-50 text-sm" />
             {addingFiles && (
@@ -380,7 +390,7 @@ export default function EditorPage() {
               </div>
             )}
             <UrlAddForm onAdd={addCardFromUrl} t={t} />
-          </div>
+        </div>
 
           <h2 className="mt-6 text-lg font-semibold">{t('yourAssets')}</h2>
           <AssetBrowser onPick={(a) => addCardFromUrl(a.url, sanitizeLabel(a.name))} refreshToken={assetsRefresh} t={t} />
@@ -395,11 +405,11 @@ export default function EditorPage() {
         </ActionRow>
 
         <h2 className="mt-6 text-lg font-semibold">{t('yourSheets')}</h2>
-        <div className="space-y-2">
+          <div className="space-y-2">
           {sheets.length === 0 && (
             <div className="text-sm text-gray-400">{t('noSavedSheets')}</div>
           )}
-          {sheets.map((s) => (
+            {sheets.map((s) => (
             <div key={s.id} className="flex items-center justify-between rounded bg-gray-800 px-2 py-2 text-sm">
               <div className="truncate pr-2">
                 <div className="font-medium">{s.title || t('untitled')}</div>
@@ -412,17 +422,17 @@ export default function EditorPage() {
                 }}>{t('load')}</Button>
                 <Button variant="secondary" onClick={async () => {
                   if (confirm(t('deleteSheetConfirm'))) {
-                    const userId = localStorage.getItem('userId');
+                    const userId = session?.user?.id;
                     if (userId) {
                       await fetch(`/api/sheets/${s.id}`, { method: 'DELETE', headers: { 'x-user-id': userId } });
                       await refreshSheets();
                     }
                   }
                 }}>{t('delete')}</Button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
       </aside>
 
       <section className="space-y-4 order-1 lg:order-2">
@@ -458,11 +468,11 @@ export default function EditorPage() {
                   ) : null}
                 </div>
                 <div className="flex flex-col gap-1">
-                  <input
-                    className="rounded bg-gray-800 px-2 py-1 text-sm"
-                    value={c.label}
-                    onChange={(e) => updateCardLabel(c.id, e.target.value)}
-                  />
+                <input
+                  className="rounded bg-gray-800 px-2 py-1 text-sm"
+                  value={c.label}
+                  onChange={(e) => updateCardLabel(c.id, e.target.value)}
+                />
                   <div className="flex gap-2 items-center">
                     <select
                       className="rounded bg-gray-800 px-2 py-1 text-xs"
@@ -475,23 +485,23 @@ export default function EditorPage() {
                         </option>
                       ))}
                     </select>
-                    <input
-                      type="number"
-                      className="w-20 rounded bg-gray-800 px-2 py-1 text-xs"
+                <input
+                  type="number"
+                  className="w-20 rounded bg-gray-800 px-2 py-1 text-xs"
                       placeholder={t('size')}
                       value={c.fontSizePt ?? settings.fontSizePt}
                       onChange={(e) => updateCardFont(c.id, { fontSizePt: Number(e.target.value || settings.fontSizePt) })}
-                    />
-                    <label className="flex items-center gap-1 text-xs text-gray-300">
-                      <input
-                        type="checkbox"
+                />
+                <label className="flex items-center gap-1 text-xs text-gray-300">
+                  <input
+                    type="checkbox"
                         checked={c.bold ?? settings.bold}
-                        onChange={(e) => updateCardFont(c.id, { bold: e.target.checked })}
-                      />
+                    onChange={(e) => updateCardFont(c.id, { bold: e.target.checked })}
+                  />
                       {t('bold')}
-                    </label>
+                </label>
                   </div>
-                </div>
+              </div>
               </div>
               <Button variant="secondary" onClick={() => removeCard(c.id)}>{t('remove')}</Button>
             </div>
@@ -502,9 +512,9 @@ export default function EditorPage() {
   );
 }
 async function saveSheet(t: (key: keyof typeof import('@/lib/i18n').translations.en) => string, title?: string) {
-  const userId = localStorage.getItem('userId');
-  if (!userId) return alert(t('pleaseSignIn'));
   const state = (window as any).PECSEditorState;
+  const userId = state?.session?.user?.id;
+  if (!userId) return alert(t('pleaseSignIn'));
   const sheet = {
     title,
     settings: state?.getSettings?.() || {},
@@ -528,7 +538,8 @@ async function saveSheet(t: (key: keyof typeof import('@/lib/i18n').translations
 }
 
 async function loadMostRecent() {
-  const userId = localStorage.getItem('userId');
+  const state = (window as any).PECSEditorState;
+  const userId = state?.session?.user?.id;
   if (!userId) return;
   const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
   if (!res.ok) return;
@@ -536,12 +547,12 @@ async function loadMostRecent() {
   const sheets = Array.isArray(data.sheets) ? data.sheets : [];
   if (sheets.length === 0) return;
   const sheet = sheets[0];
-  const state = (window as any).PECSEditorState;
   state?.loadFromSheet?.(sheet);
 }
 
 async function loadSheet(id: string) {
-  const userId = localStorage.getItem('userId');
+  const state = (window as any).PECSEditorState;
+  const userId = state?.session?.user?.id;
   if (!userId) return;
   const res = await fetch('/api/sheets', { headers: { 'x-user-id': userId } });
   if (!res.ok) return;
@@ -551,7 +562,6 @@ async function loadSheet(id: string) {
   if (sheets.length === 0) return;
   const sheet = sheets.find((s: { id: string }) => s.id == id);
   if (!sheet) return;
-  const state = (window as any).PECSEditorState;
   state?.loadFromSheet?.(sheet);
 }
 

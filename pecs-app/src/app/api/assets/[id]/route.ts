@@ -1,41 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-
-async function ensureUser(userId: string) {
-  await prisma.user.upsert({
-    where: { id: userId },
-    update: {},
-    create: { id: userId, name: 'Demo User', email: `${userId}@example.local` },
-  });
-}
+import { requireUserId } from '@/lib/auth';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const userId = req.headers.get('x-user-id') || 'demo-user';
-    await ensureUser(userId);
+    const userId = requireUserId(req);
     const id = params.id;
     const body = await req.json();
+    
+    // Verify ownership
+    const asset = await prisma.asset.findUnique({ where: { id } });
+    if (!asset || asset.userId !== userId) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+    
     const data: any = {};
     if (typeof body.name === 'string') data.name = body.name;
     if (typeof body.category === 'string' || body.category === null) data.category = body.category;
-    const asset = await prisma.asset.update({ where: { id }, data });
-    return NextResponse.json({ asset });
+    
+    const updated = await prisma.asset.update({ where: { id }, data });
+    return NextResponse.json({ asset: updated });
   } catch (error) {
     console.error('Asset PATCH error:', error);
-    return NextResponse.json({ error: 'Failed to update asset' }, { status: 500 });
+    const status = String(error).includes('Unauthorized') ? 401 : 500;
+    return NextResponse.json({ error: 'Failed to update asset' }, { status });
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const userId = req.headers.get('x-user-id') || 'demo-user';
-    await ensureUser(userId);
+    const userId = requireUserId(req);
     const id = params.id;
+    
+    // Verify ownership
+    const asset = await prisma.asset.findUnique({ where: { id } });
+    if (!asset || asset.userId !== userId) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+    
     await prisma.asset.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('Asset DELETE error:', error);
-    return NextResponse.json({ error: 'Failed to delete asset' }, { status: 500 });
+    const status = String(error).includes('Unauthorized') ? 401 : 500;
+    return NextResponse.json({ error: 'Failed to delete asset' }, { status });
   }
 }
 
